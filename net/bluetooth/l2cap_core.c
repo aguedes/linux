@@ -432,6 +432,8 @@ void l2cap_chan_set_defaults(struct l2cap_chan *chan)
 	chan->tx_win = L2CAP_DEFAULT_TX_WINDOW;
 	chan->tx_win_max = L2CAP_DEFAULT_TX_WINDOW;
 	chan->sec_level = BT_SECURITY_LOW;
+	chan->imtu = L2CAP_DEFAULT_MTU;
+	chan->omtu = 0;
 
 	set_bit(FLAG_FORCE_ACTIVE, &chan->flags);
 }
