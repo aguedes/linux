@@ -1258,7 +1258,7 @@ int hci_add_link_key(struct hci_dev *hdev, struct hci_conn *conn, int new_key,
 		key = old_key;
 	} else {
 		old_key_type = conn ? conn->key_type : 0xff;
-		key = kzalloc(sizeof(*key), GFP_ATOMIC);
+		key = kzalloc(sizeof(*key), GFP_KERNEL);
 		if (!key)
 			return -ENOMEM;
 		list_add(&key->list, &hdev->link_keys);
