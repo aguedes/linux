@@ -159,7 +159,7 @@ static struct sk_buff *smp_build_cmd(struct l2cap_conn *conn, u8 code,
 	if (len > conn->mtu)
 		return NULL;
 
-	skb = bt_skb_alloc(len, GFP_ATOMIC);
+	skb = bt_skb_alloc(len, GFP_KERNEL);
 	if (!skb)
 		return NULL;
 
@@ -492,7 +492,7 @@ static struct smp_chan *smp_chan_create(struct l2cap_conn *conn)
 {
 	struct smp_chan *smp;
 
-	smp = kzalloc(sizeof(struct smp_chan), GFP_ATOMIC);
+	smp = kzalloc(sizeof(struct smp_chan), GFP_KERNEL);
 	if (!smp)
 		return NULL;
 
