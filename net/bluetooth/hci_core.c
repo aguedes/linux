@@ -81,7 +81,7 @@ void hci_req_complete(struct hci_dev *hdev, __u16 cmd, int result)
 		if (cmd != HCI_OP_RESET || opcode == HCI_OP_RESET)
 			return;
 
-		skb = skb_clone(hdev->sent_cmd, GFP_ATOMIC);
+		skb = skb_clone(hdev->sent_cmd, GFP_KERNEL);
 		if (skb) {
 			skb_queue_head(&hdev->cmd_q, skb);
 			queue_work(hdev->workqueue, &hdev->cmd_work);
@@ -500,7 +500,7 @@ bool hci_inquiry_cache_update(struct hci_dev *hdev, struct inquiry_data *data,
 	}
 
 	/* Entry not in the cache. Add new one. */
-	ie = kzalloc(sizeof(struct inquiry_entry), GFP_ATOMIC);
+	ie = kzalloc(sizeof(struct inquiry_entry), GFP_KERNEL);
 	if (!ie)
 		return false;
 
