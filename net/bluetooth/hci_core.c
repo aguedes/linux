@@ -1426,7 +1426,7 @@ int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 	data = hci_find_remote_oob_data(hdev, bdaddr);
 
 	if (!data) {
-		data = kmalloc(sizeof(*data), GFP_ATOMIC);
+		data = kmalloc(sizeof(*data), GFP_KERNEL);
 		if (!data)
 			return -ENOMEM;
 
