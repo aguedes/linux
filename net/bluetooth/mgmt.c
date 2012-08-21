@@ -334,6 +334,9 @@ static int read_index_list(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	count = 0;
 	list_for_each_entry(d, &hci_dev_list, list) {
+		if (test_bit(HCI_SETUP, &d->dev_flags))
+			continue;
+
 		if (!mgmt_valid_hdev(d))
 			continue;
 
