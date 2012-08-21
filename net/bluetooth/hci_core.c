@@ -1063,8 +1063,11 @@ static int hci_rfkill_set_block(void *data, bool blocked)
 
 	BT_DBG("%p name %s blocked %d", hdev, hdev->name, blocked);
 
-	if (!blocked)
+	if (!blocked) {
+		if (test_bit(HCI_SETUP, &hdev->dev_flags))
+			schedule_work(&hdev->power_on);
 		return 0;
+	}
 
 	hci_dev_do_close(hdev);
 
