@@ -2169,6 +2169,8 @@ static void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 			goto unlock;
 		}
 
+		conn->enc_ts = jiffies;
+
 		if (conn->state == BT_CONFIG) {
 			if (!ev->status)
 				conn->state = BT_CONNECTED;

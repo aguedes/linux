@@ -314,6 +314,7 @@ struct hci_conn {
 	__u32		passkey_notify;
 	__u8		passkey_entered;
 	__u16		disc_timeout;
+	unsigned long	enc_ts;
 	unsigned long	flags;
 
 	__u8		remote_cap;
