@@ -304,6 +304,7 @@ struct hci_conn {
 	__u8		enc_key_size;
 	__u8		io_capability;
 	__u16		disc_timeout;
+	unsigned long	enc_ts;
 	unsigned long	flags;
 
 	__u8		remote_cap;

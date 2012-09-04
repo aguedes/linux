@@ -31,6 +31,7 @@
 #include <net/bluetooth/smp.h>
 
 #define SMP_TIMEOUT	msecs_to_jiffies(30000)
+#define SMP_MIN_KEY_REFRESH_INTERVAL	msecs_to_jiffies(1000)
 
 static inline void swap128(u8 src[16], u8 dst[16])
 {
@@ -708,6 +709,7 @@ static u8 smp_ltk_encrypt(struct l2cap_conn *conn, u8 sec_level)
 {
 	struct smp_ltk *key;
 	struct hci_conn *hcon = conn->hcon;
+	unsigned long elapsed = jiffies - hcon->enc_ts;
 
 	key = hci_find_ltk_by_addr(hcon->hdev, conn->dst, hcon->dst_type);
 	if (!key)
@@ -717,6 +719,9 @@ static u8 smp_ltk_encrypt(struct l2cap_conn *conn, u8 sec_level)
 		return 0;
 
 	if (test_and_set_bit(HCI_CONN_ENCRYPT_PEND, &hcon->flags))
+		return 1;
+
+	if (elapsed < SMP_MIN_KEY_REFRESH_INTERVAL)
 		return 1;
 
 	hci_le_start_enc(hcon, key->ediv, key->rand, key->val);
