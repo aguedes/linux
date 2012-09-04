@@ -1220,7 +1220,20 @@ static struct usb_driver btusb_driver = {
 	.disable_hub_initiated_lpm = 1,
 };
 
-module_usb_driver(btusb_driver);
+static int __init btusb_init(void)
+{
+	BT_INFO("Generic Bluetooth USB driver ver %s", VERSION);
+
+	return usb_register(&btusb_driver);
+}
+
+static void __exit btusb_exit(void)
+{
+	usb_deregister(&btusb_driver);
+}
+
+module_init(btusb_init);
+module_exit(btusb_exit);
 
 module_param(ignore_dga, bool, 0644);
 MODULE_PARM_DESC(ignore_dga, "Ignore devices with id 08fd:0001");
