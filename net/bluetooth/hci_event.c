@@ -1003,6 +1003,16 @@ static void hci_cc_write_le_host_supported(struct hci_dev *hdev,
 			hdev->features[1][0] |= LMP_HOST_LE_BREDR;
 		else
 			hdev->features[1][0] &= ~LMP_HOST_LE_BREDR;
+
+		if (sent->le || sent->simul) {
+			struct le_conn_params *params = &hdev->le_conn_params;
+
+			params->scan_interval = 0x0060;
+			params->scan_window = 0x0030;
+			params->conn_interval_min = 0x0028;
+			params->conn_interval_max = 0x0038;
+			params->supervision_timeout = 0x002a;
+		}
 	}
 
 	if (test_bit(HCI_MGMT, &hdev->dev_flags) &&

@@ -1245,6 +1245,7 @@ static int initiate_le_connection(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
 	struct hci_cp_le_create_conn cp;
+	struct le_conn_params *params = &hdev->le_conn_params;
 	struct hci_request req;
 	int err;
 
@@ -1271,13 +1272,13 @@ static int initiate_le_connection(struct hci_conn *conn)
 
 initiate_conn:
 	memset(&cp, 0, sizeof(cp));
-	cp.scan_interval = __constant_cpu_to_le16(0x0060);
-	cp.scan_window = __constant_cpu_to_le16(0x0030);
+	cp.scan_interval = __cpu_to_le16(params->scan_interval);
+	cp.scan_window = __cpu_to_le16(params->scan_window);
 	bacpy(&cp.peer_addr, &conn->dst);
 	cp.peer_addr_type = conn->dst_type;
-	cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
-	cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
-	cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
+	cp.conn_interval_min = __cpu_to_le16(params->conn_interval_min);
+	cp.conn_interval_max = __cpu_to_le16(params->conn_interval_max);
+	cp.supervision_timeout = __cpu_to_le16(params->supervision_timeout);
 	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
 	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
 	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
