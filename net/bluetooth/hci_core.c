@@ -2098,6 +2098,7 @@ struct hci_dev *hci_alloc_dev(void)
 {
 	struct hci_dev *hdev;
 	struct discovery_param *discov;
+	struct le_conn_param *conn_param;
 
 	hdev = kzalloc(sizeof(struct hci_dev), GFP_KERNEL);
 	if (!hdev)
@@ -2152,6 +2153,16 @@ struct hci_dev *hci_alloc_dev(void)
 	discov->interleaved_scan_timeout = DISCOV_INTERLEAVED_TIMEOUT;
 	discov->interleaved_inquiry_length = DISCOV_INTERLEAVED_INQUIRY_LEN;
 	discov->bredr_inquiry_length = DISCOV_BREDR_INQUIRY_LEN;
+
+	conn_param = &hdev->le_conn_param;
+	conn_param->scan_interval = 0x0060;
+	conn_param->scan_window = 0x0030;
+	conn_param->conn_interval_min = 0x0028;
+	conn_param->conn_interval_max = 0x0038;
+	conn_param->supervision_timeout = 0x002a;
+	conn_param->min_ce_lentgh = 0x0000;
+	conn_param->max_ce_lentgh = 0x0000;
+	conn_param->conn_latency = 0x0000;
 
 	return hdev;
 }

@@ -52,6 +52,7 @@ static const struct sco_param sco_param_wideband[] = {
 static void hci_le_create_connection(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
+	struct le_conn_param *param = &hdev->le_conn_param;
 	struct hci_cp_le_create_conn cp;
 
 	conn->state = BT_CONNECT;
@@ -60,15 +61,16 @@ static void hci_le_create_connection(struct hci_conn *conn)
 	conn->sec_level = BT_SECURITY_LOW;
 
 	memset(&cp, 0, sizeof(cp));
-	cp.scan_interval = __constant_cpu_to_le16(0x0060);
-	cp.scan_window = __constant_cpu_to_le16(0x0030);
+	cp.scan_interval = __cpu_to_le16(param->scan_interval);
+	cp.scan_window = __cpu_to_le16(param->scan_window);
 	bacpy(&cp.peer_addr, &conn->dst);
 	cp.peer_addr_type = conn->dst_type;
-	cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
-	cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
-	cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
-	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
-	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
+	cp.conn_interval_min = __cpu_to_le16(param->conn_interval_min);
+	cp.conn_interval_max = __cpu_to_le16(param->conn_interval_max);
+	cp.supervision_timeout = __cpu_to_le16(param->supervision_timeout);
+	cp.min_ce_len = __constant_cpu_to_le16(param->min_ce_lentgh);
+	cp.max_ce_len = __constant_cpu_to_le16(param->max_ce_lentgh);
+	cp.conn_latency = __constant_cpu_to_le16(param->conn_latency);
 
 	hci_send_cmd(hdev, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
 }
