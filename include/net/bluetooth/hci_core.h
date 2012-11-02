@@ -117,6 +117,17 @@ struct oob_data {
 	u8 randomizer[16];
 };
 
+struct le_conn_param {
+	u16 scan_interval;
+	u16 scan_window;
+	u16 conn_interval_min;
+	u16 conn_interval_max;
+	u16 supervision_timeout;
+	u16 min_ce_lentgh;
+	u16 max_ce_lentgh;
+	u16 conn_latency;
+};
+
 #define HCI_MAX_SHORT_NAME_LENGTH	10
 
 struct amp_assoc {
@@ -275,6 +286,8 @@ struct hci_dev {
 	unsigned long		dev_flags;
 
 	struct delayed_work	le_scan_disable;
+
+	struct le_conn_param	le_conn_param;
 
 	__s8			adv_tx_power;
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
