@@ -620,6 +620,47 @@ static int le_conn_parameters_show(struct seq_file *f, void *p)
 	return 0;
 }
 
+static ssize_t le_conn_parameters_write(struct file *filp,
+					const char __user *ubuf,
+					size_t cnt, loff_t *ppos)
+{
+	struct seq_file *seqf = filp->private_data;
+	struct hci_dev *hdev = seqf->private;
+	struct le_conn_params params;
+	char buffer[36];
+	int n;
+
+	/* No partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	/* Format: '0x0000 0x0000 0x0000 0x0000 0x0000' length 35 */
+	if (cnt != 35)
+		return -ENOSPC;
+
+	memset(buffer, 0, sizeof(buffer));
+
+	if (copy_from_user(buffer, ubuf, cnt))
+		return 0;
+
+	memset(&params, 0, sizeof(params));
+
+	n = sscanf(buffer, "%hx %hx %hx %hx %hx", &params.scan_interval,
+		   &params.scan_window, &params.conn_interval_min,
+		   &params.conn_interval_max, &params.supervision_timeout);
+
+	if (n < 5)
+		return -EINVAL;
+
+	hci_dev_lock(hdev);
+
+	memcpy(&hdev->le_conn_params, &params, sizeof(params));
+
+	hci_dev_unlock(hdev);
+
+	return cnt;
+}
+
 static int le_conn_parameters_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, le_conn_parameters_show, inode->i_private);
@@ -627,6 +668,7 @@ static int le_conn_parameters_open(struct inode *inode, struct file *file)
 
 static const struct file_operations le_conn_parameters_fops = {
 	.open		= le_conn_parameters_open,
+	.write		= le_conn_parameters_write,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
