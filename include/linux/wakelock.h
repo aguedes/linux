@@ -19,6 +19,8 @@
 #include <linux/list.h>
 #include <linux/ktime.h>
 
+extern struct workqueue_struct *pm_wq;
+
 /* A wake_lock prevents the system from entering suspend or other low power
  * states when active. If the type is set to WAKE_LOCK_SUSPEND, the wake_lock
  * prevents a full system suspend. If the type is WAKE_LOCK_IDLE, low power

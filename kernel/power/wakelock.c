@@ -13,6 +13,7 @@
  *
  */
 
+#include <linux/kobject.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/rtc.h>
@@ -412,6 +413,12 @@ void wake_lock_destroy(struct wake_lock *lock)
 }
 EXPORT_SYMBOL(wake_lock_destroy);
 
+static void notify_sysfs(struct work_struct *work)
+{
+	sysfs_notify(power_kobj, NULL, "wake_lock");
+}
+static DECLARE_WORK(notify_sysfs_work, notify_sysfs);
+
 static void wake_lock_internal(
 	struct wake_lock *lock, long timeout, int has_timeout)
 {
@@ -484,6 +491,7 @@ static void wake_lock_internal(
 				queue_work(suspend_work_queue, &suspend_work);
 		}
 	}
+	queue_work(pm_wq, &notify_sysfs_work);
 	spin_unlock_irqrestore(&list_lock, irqflags);
 }
 
@@ -536,6 +544,7 @@ void wake_unlock(struct wake_lock *lock)
 #endif
 		}
 	}
+	queue_work(pm_wq, &notify_sysfs_work);
 	spin_unlock_irqrestore(&list_lock, irqflags);
 }
 EXPORT_SYMBOL(wake_unlock);
