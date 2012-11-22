@@ -1293,3 +1293,53 @@ void hidinput_disconnect(struct hid_device *hid)
 }
 EXPORT_SYMBOL_GPL(hidinput_disconnect);
 
+/*
+ * hidinput_led_output_report - Generic handler LED input events
+ *
+ * @hid: hid device
+ * @code: input event code
+ * @value: input event value
+ *
+ * This function implements a generic handler for LED input events. It
+ * sets the proper LED field, builds the output report and sends it to
+ * device.
+ * This helper relies on device's .hid_output_raw_report() to send
+ * reports to the device.
+ */
+int hidinput_led_output_report(struct hid_device *hid, unsigned int code,
+				    int value)
+{
+	int offset;
+	struct hid_field *field;
+	struct hid_report *report;
+	u8 *buf;
+	int len;
+	int ret;
+
+	if (!hid->hid_output_raw_report)
+		return -ENOTSUPP;
+
+	offset = hidinput_find_field(hid, EV_LED, code, &field);
+	if (offset == -1)
+		return -ENOENT;
+
+	hid_set_field(field, offset, value);
+
+	report = field->report;
+
+	len = ((report->size - 1) >> 3) + 1 + (report->id > 0);
+
+	buf = kzalloc(len, GFP_ATOMIC);
+	if (!buf)
+		return -ENOMEM;
+
+	hid_output_report(report, buf);
+
+	ret = hid->hid_output_raw_report(hid, buf, len, HID_OUTPUT_REPORT);
+
+	kfree(buf);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(hidinput_led_output_report);
+
