@@ -122,21 +122,31 @@ static int uhid_hid_input(struct input_dev *input, unsigned int type,
 	struct uhid_device *uhid = hid->driver_data;
 	unsigned long flags;
 	struct uhid_event *ev;
+	int ret;
 
-	ev = kzalloc(sizeof(*ev), GFP_ATOMIC);
-	if (!ev)
-		return -ENOMEM;
+	switch (type) {
+	case EV_LED:
+		ret = hidinput_led_output_report(hid, code, value);
+		break;
 
-	ev->type = UHID_OUTPUT_EV;
-	ev->u.output_ev.type = type;
-	ev->u.output_ev.code = code;
-	ev->u.output_ev.value = value;
+	default:
+		ev = kzalloc(sizeof(*ev), GFP_ATOMIC);
+		if (!ev)
+			return -ENOMEM;
 
-	spin_lock_irqsave(&uhid->qlock, flags);
-	uhid_queue(uhid, ev);
-	spin_unlock_irqrestore(&uhid->qlock, flags);
+		ev->type = UHID_OUTPUT_EV;
+		ev->u.output_ev.type = type;
+		ev->u.output_ev.code = code;
+		ev->u.output_ev.value = value;
 
-	return 0;
+		spin_lock_irqsave(&uhid->qlock, flags);
+		uhid_queue(uhid, ev);
+		spin_unlock_irqrestore(&uhid->qlock, flags);
+
+		ret = 0;
+	}
+
+	return ret;
 }
 
 static int uhid_hid_parse(struct hid_device *hid)
