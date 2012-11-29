@@ -701,8 +701,6 @@ static int i2c_hid_hidinput_input_event(struct input_dev *dev,
 		unsigned int type, unsigned int code, int value)
 {
 	struct hid_device *hid = input_get_drvdata(dev);
-	struct hid_field *field;
-	int offset;
 
 	if (type == EV_FF)
 		return input_ff_event(dev, type, code, value);
@@ -710,14 +708,7 @@ static int i2c_hid_hidinput_input_event(struct input_dev *dev,
 	if (type != EV_LED)
 		return -1;
 
-	offset = hidinput_find_field(hid, type, code, &field);
-
-	if (offset == -1) {
-		hid_warn(dev, "event field not found\n");
-		return -1;
-	}
-
-	hid_set_field(field, offset, value);
+	hidinput_led_output_report(hid, code, value);
 
 	return 0;
 }
