@@ -181,10 +181,19 @@ void hci_setup_sync(struct hci_conn *conn, __u16 handle)
 	cp.rx_bandwidth   = __constant_cpu_to_le32(0x00001f40);
 	cp.voice_setting  = cpu_to_le16(hdev->voice_setting);
 
-	if (test_and_clear_bit(HCI_CONN_SCO_T2_SETTINGS, &conn->flags)) {
+	if (conn->attempt == 1 &&
+	    test_bit(HCI_CONN_SCO_TRANSPARENT, &conn->flags)) {
+		cp.pkt_type       = cpu_to_le16(EDR_ESCO_MASK & ~ESCO_2EV3);
 		cp.voice_setting |= 3;
 		cp.max_latency    = __constant_cpu_to_le16(0x000d);
 		cp.retrans_effort = 0x02;
+	} else if (conn->attempt == 2 &&
+		   test_bit(HCI_CONN_SCO_TRANSPARENT, &conn->flags)) {
+		cp.pkt_type       = cpu_to_le16(ESCO_EV3 | EDR_ESCO_MASK);
+		cp.voice_setting |= 3;
+		cp.max_latency    = __constant_cpu_to_le16(0x0007);
+		cp.retrans_effort = 0x02;
+		clear_bit(HCI_CONN_SCO_TRANSPARENT, &conn->flags);
 	} else {
 		cp.max_latency    = __constant_cpu_to_le16(0xffff);
 		cp.retrans_effort = 0xff;
@@ -584,7 +593,7 @@ struct hci_conn *hci_connect_sco(struct hci_dev *hdev, int type,
 	hci_conn_hold(sco);
 
 	if (codec)
-		set_bit(HCI_CONN_SCO_T2_SETTINGS, &sco->flags);
+		set_bit(HCI_CONN_SCO_TRANSPARENT, &sco->flags);
 
 	if (acl->state == BT_CONNECTED &&
 	    (sco->state == BT_OPEN || sco->state == BT_CLOSED)) {
