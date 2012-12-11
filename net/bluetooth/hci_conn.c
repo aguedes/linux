@@ -179,9 +179,16 @@ void hci_setup_sync(struct hci_conn *conn, __u16 handle)
 
 	cp.tx_bandwidth   = __constant_cpu_to_le32(0x00001f40);
 	cp.rx_bandwidth   = __constant_cpu_to_le32(0x00001f40);
-	cp.max_latency    = __constant_cpu_to_le16(0xffff);
 	cp.voice_setting  = cpu_to_le16(hdev->voice_setting);
-	cp.retrans_effort = 0xff;
+
+	if (test_and_clear_bit(HCI_CONN_SCO_T2_SETTINGS, &conn->flags)) {
+		cp.voice_setting |= 3;
+		cp.max_latency    = __constant_cpu_to_le16(0x000d);
+		cp.retrans_effort = 0x02;
+	} else {
+		cp.max_latency    = __constant_cpu_to_le16(0xffff);
+		cp.retrans_effort = 0xff;
+	}
 
 	hci_send_cmd(hdev, HCI_OP_SETUP_SYNC_CONN, sizeof(cp), &cp);
 }
@@ -551,8 +558,9 @@ static struct hci_conn *hci_connect_acl(struct hci_dev *hdev, bdaddr_t *dst,
 	return acl;
 }
 
-static struct hci_conn *hci_connect_sco(struct hci_dev *hdev, int type,
-				bdaddr_t *dst, u8 sec_level, u8 auth_type)
+struct hci_conn *hci_connect_sco(struct hci_dev *hdev, int type,
+					bdaddr_t *dst, u8 sec_level,
+					u8 auth_type, u8 codec)
 {
 	struct hci_conn *acl;
 	struct hci_conn *sco;
@@ -574,6 +582,9 @@ static struct hci_conn *hci_connect_sco(struct hci_dev *hdev, int type,
 	sco->link = acl;
 
 	hci_conn_hold(sco);
+
+	if (codec)
+		set_bit(HCI_CONN_SCO_T2_SETTINGS, &sco->flags);
 
 	if (acl->state == BT_CONNECTED &&
 	    (sco->state == BT_OPEN || sco->state == BT_CLOSED)) {
@@ -605,7 +616,7 @@ struct hci_conn *hci_connect(struct hci_dev *hdev, int type, bdaddr_t *dst,
 		return hci_connect_acl(hdev, dst, sec_level, auth_type);
 	case SCO_LINK:
 	case ESCO_LINK:
-		return hci_connect_sco(hdev, type, dst, sec_level, auth_type);
+		return hci_connect_sco(hdev, type, dst, sec_level, auth_type, 0);
 	}
 
 	return ERR_PTR(-EINVAL);
