@@ -666,7 +666,7 @@ static int sco_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 
 	if (sk->sk_state == BT_CONNECT2 &&
 	    test_bit(BT_SK_DEFER_SETUP, &bt_sk(sk)->flags)) {
-		hci_conn_accept(pi->conn->hcon, 0);
+		hci_conn_accept(pi->conn->hcon, 0, pi->mode);
 		sk->sk_state = BT_CONFIG;
 
 		release_sock(sk);
