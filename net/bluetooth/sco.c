@@ -678,6 +678,47 @@ static int sco_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 	return bt_sock_recvmsg(iocb, sock, msg, len, flags);
 }
 
+static int sco_sock_setsockopt_old(struct socket *sock, int optname,
+				   char __user *optval, unsigned int optlen)
+{
+	struct sock *sk = sock->sk;
+	struct sco_options opts;
+	int len, err = 0;
+
+	BT_DBG("sk %p", sk);
+
+	lock_sock(sk);
+
+	switch (optname) {
+	case SCO_OPTIONS:
+		if (sk->sk_state != BT_OPEN &&
+		    sk->sk_state != BT_BOUND &&
+		    sk->sk_state != BT_CONNECT2) {
+			err = -EINVAL;
+			break;
+		}
+
+		opts.mode = SCO_MODE_CVSD;
+
+		len = min_t(unsigned int, sizeof(opts), optlen);
+		if (copy_from_user((char *) &opts, optval, len)) {
+			err = -EFAULT;
+			break;
+		}
+
+		sco_pi(sk)->mode = opts.mode;
+		BT_DBG("mode %d", opts.mode);
+		break;
+
+	default:
+		err = -ENOPROTOOPT;
+		break;
+	}
+
+	release_sock(sk);
+	return err;
+}
+
 static int sco_sock_setsockopt(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen)
 {
 	struct sock *sk = sock->sk;
@@ -685,6 +726,9 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname, char
 	u32 opt;
 
 	BT_DBG("sk %p", sk);
+
+	if (level == SOL_SCO)
+		return sco_sock_setsockopt_old(sock, optname, optval, optlen);
 
 	lock_sock(sk);
 
