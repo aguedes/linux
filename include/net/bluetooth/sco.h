@@ -41,8 +41,26 @@ struct sockaddr_sco {
 
 /* SCO socket options */
 #define SCO_OPTIONS	0x01
+
+#define SCO_MODE_CVSD		0x00
+#define SCO_MODE_TRANSPARENT	0x01
+#define SCO_MODE_ENHANCED	0x02
 struct sco_options {
 	__u16 mtu;
+	__u8 mode;
+};
+
+struct sco_coding {
+	__u8 format;
+	__u16 vid;
+	__u16 cid;
+};
+
+struct sco_options_enhanced {
+	__u16 mtu;
+	__u8 mode;
+	struct sco_coding host;
+	struct sco_coding air;
 };
 
 #define SCO_CONNINFO	0x02
@@ -73,6 +91,7 @@ struct sco_conn {
 struct sco_pinfo {
 	struct bt_sock	bt;
 	__u32		flags;
+	__u8		mode;
 	struct sco_conn	*conn;
 };
 

@@ -418,6 +418,8 @@ static struct sock *sco_sock_alloc(struct net *net, struct socket *sock, int pro
 	sk->sk_protocol = proto;
 	sk->sk_state    = BT_OPEN;
 
+	sco_pi(sk)->mode = SCO_MODE_CVSD;
+
 	setup_timer(&sk->sk_timer, sco_sock_timeout, (unsigned long)sk);
 
 	bt_sock_link(&sco_sk_list, sk);
@@ -731,6 +733,7 @@ static int sco_sock_getsockopt_old(struct socket *sock, int optname, char __user
 	switch (optname) {
 	case SCO_OPTIONS:
 		opts.mtu = sco_pi(sk)->conn->mtu;
+		opts.mode = sco_pi(sk)->mode;
 
 		BT_DBG("mtu %d", opts.mtu);
 
