@@ -730,11 +730,6 @@ static int sco_sock_getsockopt_old(struct socket *sock, int optname, char __user
 
 	switch (optname) {
 	case SCO_OPTIONS:
-		if (sk->sk_state != BT_CONNECTED) {
-			err = -ENOTCONN;
-			break;
-		}
-
 		opts.mtu = sco_pi(sk)->conn->mtu;
 
 		BT_DBG("mtu %d", opts.mtu);
