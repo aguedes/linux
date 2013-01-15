@@ -513,6 +513,8 @@ struct hid_device {							/* device report descriptor */
 	struct dentry *debug_events;
 	struct list_head debug_list;
 	wait_queue_head_t debug_wait;
+
+	struct work_struct leds;
 };
 
 static inline void *hid_get_drvdata(struct hid_device *hdev)
@@ -736,6 +738,7 @@ void hid_disconnect(struct hid_device *hid);
 const struct hid_device_id *hid_match_id(struct hid_device *hdev,
 					 const struct hid_device_id *id);
 s32 hid_snto32(__u32 value, unsigned n);
+int hid_leds_handler(struct hid_device *hid, unsigned int code, int value);
 
 /**
  * hid_map_usage - map usage input bits

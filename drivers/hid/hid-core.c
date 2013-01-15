@@ -2294,6 +2294,75 @@ int hid_add_device(struct hid_device *hdev)
 EXPORT_SYMBOL_GPL(hid_add_device);
 
 /**
+ * hid_leds_handler - Generic handler LED input events
+ *
+ * @hdev: hid device
+ * @code: input event code
+ * @value: input event value
+ *
+ * This function implements a generic handler for LED input events. It
+ * sets the proper LED field, builds the output report and sends it to
+ * device.
+ * This helper relies on device's .hid_output_raw_report() to send
+ * reports to the device.
+ */
+
+/* XXX: Get a better name for this function */
+
+int hid_leds_handler(struct hid_device *hdev, unsigned int code, int value)
+{
+	struct hid_field *field;
+	int offset;
+
+	if (!hdev->hid_output_raw_report)
+		return -ENOTSUPP;
+
+	offset = hidinput_find_field(hdev, EV_LED, code, &field);
+	if (offset == -1) {
+		hid_warn(hdev, "LED event field not found\n");
+		return -ENOENT;
+	}
+
+	hid_set_field(field, offset, value);
+
+	schedule_work(&hdev->leds);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hid_leds_handler);
+
+static void leds_work(struct work_struct *work)
+{
+	struct hid_device *hdev = container_of(work, struct hid_device, leds);
+	struct hid_field *field;
+	struct hid_report *report;
+	int len;
+	u8 *buf;
+
+	field = hidinput_get_led_field(hdev);
+	if (!field) {
+		hid_err(hdev, "LED event field not found\n");
+		return;
+	}
+
+	report = field->report;
+
+	len = ((report->size - 1) >> 3) + 1 + (report->id > 0);
+
+	buf = kzalloc(len, GFP_KERNEL);
+	if (!buf) {
+		hid_err(hdev, "Could not allocate output report buffer\n");
+		return;
+	}
+
+	hid_output_report(report, buf);
+
+	hdev->hid_output_raw_report(hdev, buf, len, HID_OUTPUT_REPORT);
+
+	kfree(buf);
+}
+
+/**
  * hid_allocate_device - allocate new hid device descriptor
  *
  * Allocate and initialize hid device, so that hid_destroy_device might be
@@ -2321,6 +2390,8 @@ struct hid_device *hid_allocate_device(void)
 	INIT_LIST_HEAD(&hdev->debug_list);
 	sema_init(&hdev->driver_lock, 1);
 
+	INIT_WORK(&hdev->leds, leds_work);
+
 	return hdev;
 }
 EXPORT_SYMBOL_GPL(hid_allocate_device);
@@ -2347,6 +2418,7 @@ static void hid_remove_device(struct hid_device *hdev)
  */
 void hid_destroy_device(struct hid_device *hdev)
 {
+	cancel_work_sync(&hdev->leds);
 	hid_remove_device(hdev);
 	put_device(&hdev->dev);
 }
