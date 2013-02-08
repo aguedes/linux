@@ -678,9 +678,8 @@ static int usb_hidinput_input_event(struct input_dev *dev, unsigned int type, un
 {
 	struct hid_device *hid = input_get_drvdata(dev);
 	struct usbhid_device *usbhid = hid->driver_data;
-	struct hid_field *field;
 	unsigned long flags;
-	int offset;
+	int ret = 0;
 
 	if (type == EV_FF)
 		return input_ff_event(dev, type, code, value);
@@ -688,22 +687,22 @@ static int usb_hidinput_input_event(struct input_dev *dev, unsigned int type, un
 	if (type != EV_LED)
 		return -1;
 
-	if ((offset = hidinput_find_field(hid, type, code, &field)) == -1) {
-		hid_warn(dev, "event field not found\n");
-		return -1;
+	spin_lock_irqsave(&usbhid->lock, flags);
+
+	if (!test_bit(HID_DISCONNECTED, &usbhid->iofl)) {
+		ret = hid_leds_handler(hid, code, value);
+		if (ret < 0)
+			goto out;
+
+		/* XXX: This seems to be racy. */
+		usbhid->ledcount = hidinput_count_leds(hid);
+		hid_dbg(usbhid->hid, "New ledcount = %u\n", usbhid->ledcount);
 	}
 
-	spin_lock_irqsave(&usbhid->lock, flags);
-	hid_set_field(field, offset, value);
+out:
 	spin_unlock_irqrestore(&usbhid->lock, flags);
 
-	/*
-	 * Defer performing requested LED action.
-	 * This is more likely gather all LED changes into a single URB.
-	 */
-	schedule_work(&usbhid->led_work);
-
-	return 0;
+	return ret;
 }
 
 int usbhid_wait_io(struct hid_device *hid)
