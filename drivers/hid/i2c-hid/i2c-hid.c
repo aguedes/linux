@@ -725,14 +725,7 @@ static int i2c_hid_hidinput_input_event(struct input_dev *dev,
 	if (type != EV_LED)
 		return -1;
 
-	offset = hidinput_find_field(hid, type, code, &field);
-
-	if (offset == -1) {
-		hid_warn(dev, "event field not found\n");
-		return -1;
-	}
-
-	return hid_set_field(field, offset, value);
+	return hid_leds_handler(hid, code, value);
 }
 
 static struct hid_ll_driver i2c_hid_ll_driver = {
