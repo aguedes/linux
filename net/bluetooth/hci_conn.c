@@ -31,7 +31,7 @@
 #include <net/bluetooth/a2mp.h>
 #include <net/bluetooth/smp.h>
 
-static void hci_le_create_connection(struct hci_conn *conn)
+static int hci_le_create_connection(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
 	struct hci_cp_le_create_conn cp;
@@ -52,7 +52,7 @@ static void hci_le_create_connection(struct hci_conn *conn)
 	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
 	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
 
-	hci_send_cmd(hdev, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
+	return hci_send_cmd(hdev, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
 }
 
 static void hci_le_create_connection_cancel(struct hci_conn *conn)
@@ -510,6 +510,7 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 				    u8 dst_type, u8 sec_level, u8 auth_type)
 {
 	struct hci_conn *le;
+	int err;
 
 	if (test_bit(HCI_LE_PERIPHERAL, &hdev->flags))
 		return ERR_PTR(-ENOTSUPP);
@@ -525,7 +526,12 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 			return ERR_PTR(-ENOMEM);
 
 		le->dst_type = bdaddr_to_le(dst_type);
-		hci_le_create_connection(le);
+
+		err = hci_le_create_connection(le);
+		if (err < 0) {
+			hci_conn_del(le);
+			return ERR_PTR(err);
+		}
 	}
 
 	le->pending_sec_level = sec_level;
