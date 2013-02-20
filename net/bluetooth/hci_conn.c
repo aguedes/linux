@@ -545,6 +545,7 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 				    u8 dst_type, u8 sec_level, u8 auth_type)
 {
 	struct hci_conn *le;
+	int err;
 
 	if (test_bit(HCI_LE_PERIPHERAL, &hdev->flags))
 		return ERR_PTR(-ENOTSUPP);
@@ -565,7 +566,11 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		le->link_mode |= HCI_LM_MASTER;
 		le->sec_level = BT_SECURITY_LOW;
 
-		hci_le_create_connection(le);
+		err = hci_initiate_le_connection(hdev, &le->dst, le->dst_type);
+		if (err) {
+			hci_conn_del(le);
+			return ERR_PTR(err);
+		}
 	}
 
 	le->pending_sec_level = sec_level;
