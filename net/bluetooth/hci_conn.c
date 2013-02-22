@@ -36,11 +36,6 @@ static int hci_le_create_connection(struct hci_conn *conn)
 	struct hci_dev *hdev = conn->hdev;
 	struct hci_cp_le_create_conn cp;
 
-	conn->state = BT_CONNECT;
-	conn->out = true;
-	conn->link_mode |= HCI_LM_MASTER;
-	conn->sec_level = BT_SECURITY_LOW;
-
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = __constant_cpu_to_le16(0x0060);
 	cp.scan_window = __constant_cpu_to_le16(0x0030);
@@ -526,6 +521,10 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 			return ERR_PTR(-ENOMEM);
 
 		le->dst_type = bdaddr_to_le(dst_type);
+		le->state = BT_CONNECT;
+		le->out = true;
+		le->link_mode |= HCI_LM_MASTER;
+		le->sec_level = BT_SECURITY_LOW;
 
 		err = hci_le_create_connection(le);
 		if (err < 0) {
