@@ -1440,6 +1440,7 @@ struct hci_ev_num_comp_blocks {
 
 /* Low energy meta events */
 #define LE_CONN_ROLE_MASTER	0x00
+#define LE_CONN_ROLE_SLAVE	0x01
 
 #define HCI_EV_LE_CONN_COMPLETE		0x01
 struct hci_ev_le_conn_complete {

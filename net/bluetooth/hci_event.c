@@ -3444,23 +3444,11 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	hci_dev_lock(hdev);
 
-	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-	if (!conn) {
-		conn = hci_conn_add(hdev, LE_LINK, &ev->bdaddr);
-		if (!conn) {
-			BT_ERR("No memory for new connection");
-			goto unlock;
-		}
-
-		conn->dst_type = ev->bdaddr_type;
-
-		if (ev->role == LE_CONN_ROLE_MASTER) {
-			conn->out = true;
-			conn->link_mode |= HCI_LM_MASTER;
-		}
-	}
-
 	if (ev->status) {
+		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+		if (!conn)
+			goto unlock;
+
 		mgmt_connect_failed(hdev, &conn->dst, conn->type,
 				    conn->dst_type, ev->status);
 		hci_proto_connect_cfm(conn, ev->status);
@@ -3469,11 +3457,48 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		goto unlock;
 	}
 
+	switch (ev->role) {
+	case LE_CONN_ROLE_MASTER:
+		conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, &ev->bdaddr);
+		/* If there is no hci_conn object with the given address, it
+		 * means this new connection was triggered through HCI socket
+		 * interface. For that case, we should create a new hci_conn
+		 * object.
+		 */
+		if (!conn) {
+			conn = hci_conn_add(hdev, LE_LINK, &ev->bdaddr);
+			if (!conn) {
+				BT_ERR("No memory for new connection");
+				goto unlock;
+			}
+
+			conn->out = true;
+			conn->link_mode |= HCI_LM_MASTER;
+			conn->sec_level = BT_SECURITY_LOW;
+			conn->dst_type = ev->bdaddr_type;
+		}
+		break;
+
+	case LE_CONN_ROLE_SLAVE:
+		conn = hci_conn_add(hdev, LE_LINK, &ev->bdaddr);
+		if (!conn) {
+			BT_ERR("No memory for new connection");
+			goto unlock;
+		}
+
+		conn->dst_type = ev->bdaddr_type;
+		conn->sec_level = BT_SECURITY_LOW;
+		break;
+
+	default:
+		BT_ERR("Used reserved Role parameter %d", ev->role);
+		goto unlock;
+	}
+
 	if (!test_and_set_bit(HCI_CONN_MGMT_CONNECTED, &conn->flags))
 		mgmt_device_connected(hdev, &ev->bdaddr, conn->type,
 				      conn->dst_type, 0, NULL, 0, NULL);
 
-	conn->sec_level = BT_SECURITY_LOW;
 	conn->handle = __le16_to_cpu(ev->handle);
 	conn->state = BT_CONNECTED;
 
