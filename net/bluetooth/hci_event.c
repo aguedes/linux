@@ -3442,19 +3442,20 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
-	hci_dev_lock(hdev);
-
 	if (ev->status) {
 		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
 		if (!conn)
-			goto unlock;
+			return;
 
 		mgmt_connect_failed(hdev, &conn->dst, conn->type,
 				    conn->dst_type, ev->status);
 		hci_proto_connect_cfm(conn, ev->status);
 		conn->state = BT_CLOSED;
+
+		hci_dev_lock(hdev);
 		hci_conn_del(conn);
-		goto unlock;
+		hci_dev_unlock(hdev);
+		return;
 	}
 
 	switch (ev->role) {
@@ -3466,10 +3467,13 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		 * object.
 		 */
 		if (!conn) {
+			hci_dev_lock(hdev);
 			conn = hci_conn_add(hdev, LE_LINK, &ev->bdaddr);
+			hci_dev_unlock(hdev);
+
 			if (!conn) {
 				BT_ERR("No memory for new connection");
-				goto unlock;
+				return;
 			}
 
 			conn->out = true;
@@ -3480,10 +3484,13 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		break;
 
 	case LE_CONN_ROLE_SLAVE:
+		hci_dev_lock(hdev);
 		conn = hci_conn_add(hdev, LE_LINK, &ev->bdaddr);
+		hci_dev_unlock(hdev);
+
 		if (!conn) {
 			BT_ERR("No memory for new connection");
-			goto unlock;
+			return;
 		}
 
 		conn->dst_type = ev->bdaddr_type;
@@ -3492,7 +3499,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	default:
 		BT_ERR("Used reserved Role parameter %d", ev->role);
-		goto unlock;
+		return;
 	}
 
 	if (!test_and_set_bit(HCI_CONN_MGMT_CONNECTED, &conn->flags))
@@ -3505,9 +3512,6 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_conn_add_sysfs(conn);
 
 	hci_proto_connect_cfm(conn, ev->status);
-
-unlock:
-	hci_dev_unlock(hdev);
 }
 
 static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
