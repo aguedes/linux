@@ -630,7 +630,7 @@ void hci_discovery_set_state(struct hci_dev *hdev, int state)
 	hdev->discovery.state = state;
 }
 
-static void inquiry_cache_flush(struct hci_dev *hdev)
+void inquiry_cache_flush(struct hci_dev *hdev)
 {
 	struct discovery_state *cache = &hdev->discovery;
 	struct inquiry_entry *p, *n;
