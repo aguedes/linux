@@ -40,18 +40,10 @@ static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
-	if (status) {
-		hci_dev_lock(hdev);
-		mgmt_stop_discovery_failed(hdev, status);
-		hci_dev_unlock(hdev);
+	if (status)
 		return;
-	}
 
 	clear_bit(HCI_INQUIRY, &hdev->flags);
-
-	hci_dev_lock(hdev);
-	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
-	hci_dev_unlock(hdev);
 
 	hci_conn_check_pending(hdev);
 }
@@ -968,12 +960,8 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 		break;
 
 	case LE_SCAN_DISABLE:
-		if (status) {
-			hci_dev_lock(hdev);
-			mgmt_stop_discovery_failed(hdev, status);
-			hci_dev_unlock(hdev);
+		if (status)
 			return;
-		}
 
 		clear_bit(HCI_LE_SCAN, &hdev->dev_flags);
 		break;
@@ -1258,9 +1246,6 @@ static void hci_check_pending_name(struct hci_dev *hdev, struct hci_conn *conn,
 	if (discov->state == DISCOVERY_STOPPED)
 		return;
 
-	if (discov->state == DISCOVERY_STOPPING)
-		goto discov_complete;
-
 	if (discov->state != DISCOVERY_RESOLVING)
 		return;
 
@@ -1284,7 +1269,6 @@ static void hci_check_pending_name(struct hci_dev *hdev, struct hci_conn *conn,
 	if (hci_resolve_next_name(hdev))
 		return;
 
-discov_complete:
 	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 }
 
