@@ -851,6 +851,8 @@ int hci_inquiry(void __user *arg)
 			goto done;
 	}
 
+	/* TODO: Wait until inquiry procedure finishes */
+
 	/* for unlimited number of responses we will use buffer with
 	 * 255 entries
 	 */

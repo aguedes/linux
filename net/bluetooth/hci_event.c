@@ -53,8 +53,6 @@ static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 	hci_dev_unlock(hdev);
 
-	hci_req_cmd_complete(hdev, HCI_OP_INQUIRY, status);
-
 	hci_conn_check_pending(hdev);
 }
 
@@ -1079,6 +1077,8 @@ static void hci_cs_inquiry(struct hci_dev *hdev, __u8 status)
 {
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
+	hci_req_cmd_complete(hdev, HCI_OP_INQUIRY, status);
+
 	if (status) {
 		hci_conn_check_pending(hdev);
 		hci_dev_lock(hdev);
@@ -1599,8 +1599,6 @@ static void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	struct inquiry_entry *e;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
-
-	hci_req_cmd_complete(hdev, HCI_OP_INQUIRY, status);
 
 	hci_conn_check_pending(hdev);
 
