@@ -2633,12 +2633,12 @@ static void start_discovery_complete(struct hci_dev *hdev, u8 status)
 
 	switch (hdev->discovery.type) {
 	case DISCOV_TYPE_LE:
-		queue_delayed_work(hdev->workqueue, &hdev->le_scan_disable,
+		queue_delayed_work(hdev->workqueue, &hdev->discovery_timeout,
 				   DISCOV_LE_TIMEOUT);
 		break;
 
 	case DISCOV_TYPE_INTERLEAVED:
-		queue_delayed_work(hdev->workqueue, &hdev->le_scan_disable,
+		queue_delayed_work(hdev->workqueue, &hdev->discovery_timeout,
 				   DISCOV_INTERLEAVED_TIMEOUT);
 		break;
 
@@ -2841,7 +2841,7 @@ static int stop_discovery(struct sock *sk, struct hci_dev *hdev, void *data,
 		if (test_bit(HCI_INQUIRY, &hdev->flags)) {
 			hci_req_add(&req, HCI_OP_INQUIRY_CANCEL, 0, NULL);
 		} else {
-			cancel_delayed_work(&hdev->le_scan_disable);
+			cancel_delayed_work(&hdev->discovery_timeout);
 
 			memset(&enable_cp, 0, sizeof(enable_cp));
 			enable_cp.enable = LE_SCAN_DISABLE;

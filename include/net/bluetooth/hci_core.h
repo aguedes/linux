@@ -273,7 +273,7 @@ struct hci_dev {
 
 	unsigned long		dev_flags;
 
-	struct delayed_work	le_scan_disable;
+	struct delayed_work	discovery_timeout;
 
 	__s8			adv_tx_power;
 	__u8			adv_data[HCI_MAX_AD_LENGTH];

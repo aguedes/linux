@@ -1086,7 +1086,7 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 	if (test_and_clear_bit(HCI_SERVICE_CACHE, &hdev->dev_flags))
 		cancel_delayed_work(&hdev->service_cache);
 
-	cancel_delayed_work_sync(&hdev->le_scan_disable);
+	cancel_delayed_work_sync(&hdev->discovery_timeout);
 
 	hci_dev_lock(hdev);
 	inquiry_cache_flush(hdev);
@@ -1879,10 +1879,10 @@ static void le_scan_disable_work_complete(struct hci_dev *hdev, u8 status)
 	}
 }
 
-static void le_scan_disable_work(struct work_struct *work)
+static void hci_discovery_timeout(struct work_struct *work)
 {
 	struct hci_dev *hdev = container_of(work, struct hci_dev,
-					    le_scan_disable.work);
+					    discovery_timeout.work);
 	struct hci_cp_le_set_scan_enable cp;
 	struct hci_request req;
 	int err;
@@ -1958,7 +1958,7 @@ struct hci_dev *hci_alloc_dev(void)
 
 	INIT_DELAYED_WORK(&hdev->power_off, hci_power_off);
 	INIT_DELAYED_WORK(&hdev->discov_off, hci_discov_off);
-	INIT_DELAYED_WORK(&hdev->le_scan_disable, le_scan_disable_work);
+	INIT_DELAYED_WORK(&hdev->discovery_timeout, hci_discovery_timeout);
 
 	skb_queue_head_init(&hdev->driver_init);
 	skb_queue_head_init(&hdev->rx_q);
