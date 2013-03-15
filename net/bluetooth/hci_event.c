@@ -1467,31 +1467,9 @@ static void hci_cs_disconnect(struct hci_dev *hdev, u8 status)
 
 static void hci_cs_le_create_conn(struct hci_dev *hdev, __u8 status)
 {
-	struct hci_conn *conn;
-
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
 	hci_req_cmd_complete(hdev, HCI_OP_LE_CREATE_CONN, status);
-
-	if (status) {
-		hci_dev_lock(hdev);
-
-		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-		if (!conn) {
-			hci_dev_unlock(hdev);
-			return;
-		}
-
-		BT_DBG("%s bdaddr %pMR conn %p", hdev->name, &conn->dst, conn);
-
-		conn->state = BT_CLOSED;
-		mgmt_connect_failed(hdev, &conn->dst, conn->type,
-				    conn->dst_type, status);
-		hci_proto_connect_cfm(conn, status);
-		hci_conn_del(conn);
-
-		hci_dev_unlock(hdev);
-	}
 }
 
 static void hci_cs_create_phylink(struct hci_dev *hdev, u8 status)
