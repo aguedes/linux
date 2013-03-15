@@ -253,10 +253,82 @@ static void hci_conn_disconnect(struct hci_conn *conn)
 	}
 }
 
+static void hci_conn_fail_pending(struct hci_conn *conn, u8 status)
+{
+	struct hci_dev *hdev = conn->hdev;
+
+	BT_DBG("conn %p bdaddr %pMR type %d", conn, &conn->dst,
+	       conn->dst_type);
+
+	mgmt_connect_failed(hdev, &conn->dst, conn->type, conn->dst_type,
+			    status);
+
+	conn->state = BT_CLOSED;
+	hci_proto_connect_cfm(conn, status);
+
+	hci_dev_lock(hdev);
+	hci_conn_del(conn);
+	hci_dev_unlock(hdev);
+}
+
+static void cancel_le_attempt_complete(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn *conn;
+
+	BT_DBG("status %d", status);
+
+	if (status) {
+		struct hci_command_hdr *last_cmd;
+		u16 opcode;
+
+		/* Get opcode from the last command sent */
+		last_cmd = (void *) hdev->sent_cmd->data;
+		opcode = __le16_to_cpu(last_cmd->opcode);
+
+		BT_ERR("Failed to cancel LE attempt: opcode 0x%4.4x status"
+		       "0x%2.2x", opcode, status);
+		return;
+	}
+
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CLOSED);
+	if (!conn)
+		return;
+
+	hci_conn_fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+}
+
+static int cancel_le_attempt(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_le_set_scan_enable cp;
+	struct hci_request req;
+
+	hci_req_init(&req, hdev);
+
+	switch (conn->le_state) {
+	case HCI_CONN_LE_SCAN:
+		memset(&cp, 0, sizeof(cp));
+		cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
+		break;
+
+	case HCI_CONN_LE_INITIATE:
+		hci_req_add(&req, HCI_OP_LE_CREATE_CONN_CANCEL, 0, NULL);
+		break;
+
+	default:
+		BT_ERR("Invalid le_state %d", conn->le_state);
+		return -EINVAL;
+	}
+
+	return hci_req_run(&req, cancel_le_attempt_complete);
+}
+
 static void hci_conn_timeout(struct work_struct *work)
 {
 	struct hci_conn *conn = container_of(work, struct hci_conn,
 					     disc_work.work);
+	int err;
 
 	BT_DBG("hcon %p state %s", conn, state_to_string(conn->state));
 
@@ -266,11 +338,21 @@ static void hci_conn_timeout(struct work_struct *work)
 	switch (conn->state) {
 	case BT_CONNECT:
 	case BT_CONNECT2:
-		if (conn->out) {
-			if (conn->type == ACL_LINK)
-				hci_acl_create_connection_cancel(conn);
-			else if (conn->type == LE_LINK)
-				hci_le_create_connection_cancel(conn);
+		if (!conn->out)
+			return;
+
+		switch (conn->type) {
+		case ACL_LINK:
+			hci_acl_create_connection_cancel(conn);
+			break;
+		case LE_LINK:
+			err = cancel_le_attempt(conn);
+			if (err)
+				BT_ERR("Failed to cancel LE attempt: err %d",
+					err);
+
+			conn->state = BT_CLOSED;
+			break;
 		}
 		break;
 	case BT_CONFIG:
@@ -492,24 +574,6 @@ struct hci_dev *hci_get_route(bdaddr_t *dst, bdaddr_t *src)
 	return hdev;
 }
 EXPORT_SYMBOL(hci_get_route);
-
-static void hci_conn_fail_pending(struct hci_conn *conn, u8 status)
-{
-	struct hci_dev *hdev = conn->hdev;
-
-	BT_DBG("conn %p bdaddr %pMR type %d", conn, &conn->dst,
-	       conn->dst_type);
-
-	mgmt_connect_failed(hdev, &conn->dst, conn->type, conn->dst_type,
-			    status);
-
-	conn->state = BT_CLOSED;
-	hci_proto_connect_cfm(conn, status);
-
-	hci_dev_lock(hdev);
-	hci_conn_del(conn);
-	hci_dev_unlock(hdev);
-}
 
 static void background_le_scan_complete(struct hci_dev *hdev, u8 status)
 {
