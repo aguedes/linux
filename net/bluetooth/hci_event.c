@@ -1471,6 +1471,8 @@ static void hci_cs_le_create_conn(struct hci_dev *hdev, __u8 status)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
+	hci_req_cmd_complete(hdev, HCI_OP_LE_CREATE_CONN, status);
+
 	if (status) {
 		hci_dev_lock(hdev);
 
