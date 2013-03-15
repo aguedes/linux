@@ -351,6 +351,8 @@ struct hci_conn {
 
 	struct hci_conn	*link;
 
+	bool		le_initiating;
+
 	void (*connect_cfm_cb)	(struct hci_conn *conn, u8 status);
 	void (*security_cfm_cb)	(struct hci_conn *conn, u8 status);
 	void (*disconn_cfm_cb)	(struct hci_conn *conn, u8 reason);
