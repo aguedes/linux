@@ -279,6 +279,11 @@ struct hci_dev {
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
 	__u8			adv_data_len;
 
+	/* This counter tracks the number of pending LE connections
+	 * (connections in HCI_CONN_LE_SCAN state).
+	 */
+	atomic_t                le_conn_pend;
+
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
 	int (*flush)(struct hci_dev *hdev);

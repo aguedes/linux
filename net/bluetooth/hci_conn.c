@@ -528,6 +528,12 @@ int hci_conn_del(struct hci_conn *conn)
 
 	hci_conn_put_device(conn);
 
+	/* If hci_conn is deleted in HCI_CONN_LE_SCAN le_state, we should
+	 * decrement the counter of pending LE connection.
+	 */
+	if (conn->le_state == HCI_CONN_LE_SCAN)
+		atomic_dec(&hdev->le_conn_pend);
+
 	hci_dev_put(hdev);
 
 	if (conn->handle == 0)
@@ -642,6 +648,7 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		le->dst_type = bdaddr_to_le(dst_type);
 		le->state = BT_CONNECT;
 		le->le_state = HCI_CONN_LE_SCAN;
+		atomic_inc(&hdev->le_conn_pend);
 
 		err = enable_background_le_scan(hdev);
 		if (err < 0) {
@@ -990,6 +997,9 @@ void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
 	struct hci_cp_le_create_conn conn_cp;
 	struct hci_request req;
 
+	if (atomic_read(&hdev->le_conn_pend) == 0)
+		return;
+
 	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
 	if (!conn)
 		return;
@@ -1003,6 +1013,7 @@ void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
 	if (conn->le_state != HCI_CONN_LE_SCAN)
 		return;
 
+	atomic_dec(&hdev->le_conn_pend);
 	conn->le_state = HCI_CONN_LE_INITIATE;
 
 	hci_req_init(&req, hdev);
