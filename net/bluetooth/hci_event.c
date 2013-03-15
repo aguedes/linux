@@ -3534,6 +3534,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	conn->handle = __le16_to_cpu(ev->handle);
 	conn->state = BT_CONNECTED;
+	conn->le_initiating = false;
 
 	hci_conn_add_sysfs(conn);
 

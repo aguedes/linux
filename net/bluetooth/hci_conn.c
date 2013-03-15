@@ -373,6 +373,50 @@ static void hci_conn_disconnect(struct hci_conn *conn)
 	}
 }
 
+static void cancel_create_le_conn_complete(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn *conn;
+
+	if (status) {
+		BT_ERR("Failed to cancel LE create connection: status 0x%2.2x",
+		       status);
+		return;
+	}
+
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (conn)
+		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+}
+
+static void cancel_pending_le_conn(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	int err;
+
+	if (conn->le_initiating) {
+		struct hci_request req;
+
+		hci_req_init(&req, hdev);
+		hci_req_add(&req, HCI_OP_LE_CREATE_CONN_CANCEL, 0, NULL);
+
+		err = hci_req_run(&req, cancel_create_le_conn_complete);
+		if (err) {
+			BT_ERR("Cancel create LE connection request failed: "
+			       "err %d", err);
+			return;
+		}
+	} else {
+		int err = remove_passive_scan_trigger(hdev);
+		if (err) {
+			BT_ERR("Failed to remove passive scan trigger: err %d",
+			       err);
+			return;
+		}
+
+		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+	}
+}
+
 static void hci_conn_timeout(struct work_struct *work)
 {
 	struct hci_conn *conn = container_of(work, struct hci_conn,
@@ -387,12 +431,15 @@ static void hci_conn_timeout(struct work_struct *work)
 	case BT_CONNECT:
 	case BT_CONNECT2:
 		if (conn->out) {
-			if (conn->type == ACL_LINK)
+			switch (conn->type) {
+			case ACL_LINK:
 				hci_acl_create_connection_cancel(conn);
-			else if (conn->type == LE_LINK)
-				hci_le_create_connection_cancel(conn);
-		} else if (conn->type == SCO_LINK || conn->type == ESCO_LINK) {
-			hci_reject_sco(conn);
+			case LE_LINK:
+				cancel_pending_le_conn(conn);
+			}
+		} else {
+			if (conn->type == SCO_LINK || conn->type == ESCO_LINK)
+				hci_reject_sco(conn);
 		}
 		break;
 	case BT_CONFIG:
@@ -528,7 +575,8 @@ int hci_conn_del(struct hci_conn *conn)
 
 	del_timer(&conn->idle_timer);
 
-	cancel_delayed_work_sync(&conn->disc_work);
+	/* FIXME: think about a better way to fix this issue with hci_conn_timeout. */
+	cancel_delayed_work(&conn->disc_work);
 
 	del_timer(&conn->auto_accept_timer);
 
@@ -1166,6 +1214,7 @@ static int initiate_le_connection(struct hci_conn *conn)
 	struct hci_dev *hdev = conn->hdev;
 	struct hci_cp_le_create_conn cp;
 	struct hci_request req;
+	int err;
 
 	hci_req_init(&req, hdev);
 
@@ -1181,7 +1230,12 @@ static int initiate_le_connection(struct hci_conn *conn)
 	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
 	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
 
-	return hci_req_run(&req, initiate_le_connection_complete);
+	err = hci_req_run(&req, initiate_le_connection_complete);
+	if (err)
+		return err;
+
+	conn->le_initiating = true;
+	return 0;
 }
 
 static struct hci_conn *find_pending_le_connection(struct hci_dev *hdev,
