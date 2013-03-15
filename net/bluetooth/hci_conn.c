@@ -577,8 +577,9 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		le->sec_level = BT_SECURITY_LOW;
 		le->dst_type = bdaddr_to_le(dst_type);
 		le->state = BT_CONNECT;
+		le->le_state = HCI_CONN_LE_SCAN;
 
-		err = hci_le_create_connection(le);
+		err = enable_background_le_scan(hdev);
 		if (err < 0) {
 			hci_conn_del(le);
 			return ERR_PTR(err);
