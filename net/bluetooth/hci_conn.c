@@ -493,6 +493,66 @@ struct hci_dev *hci_get_route(bdaddr_t *dst, bdaddr_t *src)
 }
 EXPORT_SYMBOL(hci_get_route);
 
+static void hci_conn_fail_pending(struct hci_conn *conn, u8 status)
+{
+	struct hci_dev *hdev = conn->hdev;
+
+	BT_DBG("conn %p bdaddr %pMR type %d", conn, &conn->dst,
+	       conn->dst_type);
+
+	mgmt_connect_failed(hdev, &conn->dst, conn->type, conn->dst_type,
+			    status);
+
+	conn->state = BT_CLOSED;
+	hci_proto_connect_cfm(conn, status);
+
+	hci_dev_lock(hdev);
+	hci_conn_del(conn);
+	hci_dev_unlock(hdev);
+}
+
+static void background_le_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn *conn;
+
+	BT_DBG("status %d", status);
+
+	if (status == 0)
+		return;
+
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (!conn)
+		return;
+
+	hci_conn_fail_pending(conn, status);
+}
+
+static int enable_background_le_scan(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_param param_cp;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_request req;
+
+	BT_DBG("%s", hdev->name);
+
+	hci_req_init(&req, hdev);
+
+	memset(&param_cp, 0, sizeof(param_cp));
+	param_cp.type = LE_SCAN_PASSIVE;
+	param_cp.interval = cpu_to_le16(0x0060);
+	param_cp.window = cpu_to_le16(0x0030);
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
+		    &param_cp);
+
+	memset(&enable_cp, 0, sizeof(enable_cp));
+	enable_cp.enable = LE_SCAN_ENABLE;
+	enable_cp.filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+		    &enable_cp);
+
+	return hci_req_run(&req, background_le_scan_complete);
+}
+
 static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 				    u8 dst_type, u8 sec_level, u8 auth_type)
 {
