@@ -289,6 +289,15 @@ struct hci_dev {
 
 #define HCI_PHY_HANDLE(handle)	(handle & 0xff)
 
+/*
+ * States from LE connection establishment state machine.
+ */
+enum {
+	HCI_CONN_LE_IDLE,
+	HCI_CONN_LE_SCAN,
+	HCI_CONN_LE_INITIATE,
+};
+
 struct hci_conn {
 	struct list_head list;
 
@@ -298,6 +307,7 @@ struct hci_conn {
 	__u8		dst_type;
 	__u16		handle;
 	__u16		state;
+	__u16		le_state;
 	__u8		mode;
 	__u8		type;
 	bool		out;

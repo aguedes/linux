@@ -352,6 +352,7 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst)
 	conn->type  = type;
 	conn->mode  = HCI_CM_ACTIVE;
 	conn->state = BT_OPEN;
+	conn->le_state = HCI_CONN_LE_IDLE;
 	conn->auth_type = HCI_AT_GENERAL_BONDING;
 	conn->io_capability = hdev->io_capability;
 	conn->remote_auth = 0xff;
