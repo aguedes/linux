@@ -901,6 +901,69 @@ void hci_conn_check_pending(struct hci_dev *hdev)
 	hci_dev_unlock(hdev);
 }
 
+static void le_conn_initiate_complete(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn *conn;
+
+	BT_DBG("status %d", status);
+
+	if (status == 0)
+		return;
+
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (!conn)
+		return;
+
+	hci_conn_fail_pending(conn, status);
+}
+
+void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
+			       __u8 addr_type)
+{
+	struct hci_conn *conn;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_cp_le_create_conn conn_cp;
+	struct hci_request req;
+
+	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
+	if (!conn)
+		return;
+
+	if (conn->state != BT_CONNECT)
+		return;
+
+	if (conn->dst_type != addr_type)
+		return;
+
+	if (conn->le_state != HCI_CONN_LE_SCAN)
+		return;
+
+	conn->le_state = HCI_CONN_LE_INITIATE;
+
+	hci_req_init(&req, hdev);
+
+	memset(&enable_cp, 0, sizeof(enable_cp));
+	enable_cp.enable = LE_SCAN_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+		    &enable_cp);
+
+	memset(&conn_cp, 0, sizeof(conn_cp));
+	conn_cp.scan_interval = __constant_cpu_to_le16(0x0060);
+	conn_cp.scan_window = __constant_cpu_to_le16(0x0030);
+	bacpy(&conn_cp.peer_addr, &conn->dst);
+	conn_cp.peer_addr_type = conn->dst_type;
+	conn_cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
+	conn_cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
+	conn_cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
+	conn_cp.min_ce_len = __constant_cpu_to_le16(0x0000);
+	conn_cp.max_ce_len = __constant_cpu_to_le16(0x0000);
+	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(conn_cp),
+		    &conn_cp);
+
+	if (hci_req_run(&req, le_conn_initiate_complete))
+		hci_conn_fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+}
+
 void hci_conn_hold_device(struct hci_conn *conn)
 {
 	atomic_inc(&conn->devref);
