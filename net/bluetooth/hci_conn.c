@@ -682,10 +682,6 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		goto out;
 	}
 
-	le = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-	if (le)
-		return ERR_PTR(-EBUSY);
-
 	le = hci_conn_add(hdev, LE_LINK, dst);
 	if (!le)
 		return ERR_PTR(-ENOMEM);
