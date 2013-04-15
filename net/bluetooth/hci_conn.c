@@ -386,7 +386,7 @@ static void cancel_create_le_conn_complete(struct hci_dev *hdev, u8 status)
 		return;
 	}
 
-	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	conn = hci_conn_find_le_initiating(hdev);
 	if (conn)
 		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
 }
@@ -1207,7 +1207,7 @@ static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 
 	BT_ERR("Failed to create LE connection: status 0x%2.2x", status);
 
-	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	conn = hci_conn_find_le_initiating(hdev);
 	if (conn)
 		fail_pending(conn, status);
 }

@@ -3438,7 +3438,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
 	if (ev->status) {
-		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+		conn = hci_conn_find_le_initiating(hdev);
 		if (!conn)
 			return;
 
