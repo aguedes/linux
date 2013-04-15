@@ -575,6 +575,30 @@ static inline struct hci_conn *hci_conn_hash_lookup_state(struct hci_dev *hdev,
 	return NULL;
 }
 
+static inline struct hci_conn *hci_conn_find_le_initiating(struct hci_dev *hdev)
+{
+	struct hci_conn_hash *hash = &hdev->conn_hash;
+	struct hci_conn *conn, *ret = NULL;
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(conn, &hash->list, list) {
+		if (conn->type != LE_LINK)
+			continue;
+		if (conn->state != BT_CONNECT)
+			continue;
+		if (!conn->le_initiating)
+			continue;
+
+		ret = conn;
+		break;
+	}
+
+	rcu_read_unlock();
+
+	return ret;
+}
+
 void hci_disconnect(struct hci_conn *conn, __u8 reason);
 void hci_setup_sync(struct hci_conn *conn, __u16 handle);
 void hci_sco_setup(struct hci_conn *conn, __u8 status);
