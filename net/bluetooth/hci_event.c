@@ -3439,17 +3439,8 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	if (ev->status) {
 		conn = hci_conn_find_le_initiating(hdev);
-		if (!conn)
-			return;
-
-		mgmt_connect_failed(hdev, &conn->dst, conn->type,
-				    conn->dst_type, ev->status);
-		hci_proto_connect_cfm(conn, ev->status);
-		conn->state = BT_CLOSED;
-
-		hci_dev_lock(hdev);
-		hci_conn_del(conn);
-		hci_dev_unlock(hdev);
+		if (conn)
+			hci_conn_fail_pending(conn, ev->status);
 		return;
 	}
 

@@ -31,7 +31,7 @@
 #include <net/bluetooth/a2mp.h>
 #include <net/bluetooth/smp.h>
 
-static void fail_pending(struct hci_conn *conn, u8 status)
+void hci_conn_fail_pending(struct hci_conn *conn, u8 status)
 {
 	struct hci_dev *hdev = conn->hdev;
 
@@ -105,7 +105,7 @@ static void fail_all_le_pending(struct hci_dev *hdev, u8 status)
 			return;
 		}
 
-		fail_pending(conn, status);
+		hci_conn_fail_pending(conn, status);
 	}
 }
 
@@ -388,7 +388,7 @@ static void cancel_create_le_conn_complete(struct hci_dev *hdev, u8 status)
 
 	conn = hci_conn_find_le_initiating(hdev);
 	if (conn)
-		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+		hci_conn_fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
 }
 
 static void cancel_pending_le_conn(struct hci_conn *conn)
@@ -416,7 +416,7 @@ static void cancel_pending_le_conn(struct hci_conn *conn)
 			return;
 		}
 
-		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+		hci_conn_fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
 	}
 }
 
@@ -1209,7 +1209,7 @@ static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 
 	conn = hci_conn_find_le_initiating(hdev);
 	if (conn)
-		fail_pending(conn, status);
+		hci_conn_fail_pending(conn, status);
 }
 
 static int initiate_le_connection(struct hci_conn *conn)
@@ -1285,6 +1285,6 @@ void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
 	err = initiate_le_connection(conn);
 	if (err) {
 		BT_ERR("Failed to initiate LE connection: err %d", err);
-		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+		hci_conn_fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
 	}
 }
