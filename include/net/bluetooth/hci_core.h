@@ -610,6 +610,7 @@ void hci_conn_check_pending(struct hci_dev *hdev);
 void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
 			       __u8 addr_type);
 void hci_conn_fail_pending(struct hci_conn *conn, u8 status);
+void hci_conn_check_passive_scanning(struct hci_dev *hdev);
 
 struct hci_chan *hci_chan_create(struct hci_conn *conn);
 void hci_chan_del(struct hci_chan *chan);

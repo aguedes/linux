@@ -3437,6 +3437,12 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
+	/* Check the passive scanning since it may have been temporarily
+	 * disabled if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_conn_check_passive_scanning(hdev);
+
 	if (ev->status) {
 		conn = hci_conn_find_le_initiating(hdev);
 		if (conn)
