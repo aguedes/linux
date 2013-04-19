@@ -620,34 +620,42 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 	if (test_bit(HCI_LE_PERIPHERAL, &hdev->flags))
 		return ERR_PTR(-ENOTSUPP);
 
+	/* If already exists a hci_conn object for the following connection
+	 * attempt, we simply update pending_sec_level and auth_type fields
+	 * and return the found object.
+	 */
 	le = hci_conn_hash_lookup_ba(hdev, LE_LINK, dst);
-	if (!le) {
-		le = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-		if (le)
-			return ERR_PTR(-EBUSY);
-
-		le = hci_conn_add(hdev, LE_LINK, dst);
-		if (!le)
-			return ERR_PTR(-ENOMEM);
-
-		le->dst_type = bdaddr_to_le(dst_type);
-		le->state = BT_CONNECT;
-		le->out = true;
-		le->link_mode |= HCI_LM_MASTER;
-		le->sec_level = BT_SECURITY_LOW;
-
-		err = hci_le_create_connection(le);
-		if (err < 0) {
-			hci_conn_del(le);
-			return ERR_PTR(err);
-		}
+	if (le) {
+		le->pending_sec_level = sec_level;
+		le->auth_type = auth_type;
+		goto out;
 	}
 
+	le = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (le)
+		return ERR_PTR(-EBUSY);
+
+	le = hci_conn_add(hdev, LE_LINK, dst);
+	if (!le)
+		return ERR_PTR(-ENOMEM);
+
+	le->dst_type = bdaddr_to_le(dst_type);
+	le->state = BT_CONNECT;
+	le->out = true;
+	le->link_mode |= HCI_LM_MASTER;
+	le->sec_level = BT_SECURITY_LOW;
 	le->pending_sec_level = sec_level;
 	le->auth_type = auth_type;
 
-	hci_conn_hold(le);
+	err = add_passive_scan_trigger(hdev);
+	if (err) {
+		BT_ERR("Failed to add passive scanning trigger: err %d", err);
+		hci_conn_del(le);
+		return ERR_PTR(err);
+	}
 
+out:
+	hci_conn_hold(le);
 	return le;
 }
 
@@ -1174,4 +1182,52 @@ static int initiate_le_connection(struct hci_conn *conn)
 	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
 
 	return hci_req_run(&req, initiate_le_connection_complete);
+}
+
+static struct hci_conn *find_pending_le_connection(struct hci_dev *hdev,
+						   bdaddr_t *addr,
+						   __u8 addr_type)
+{
+	struct hci_conn *conn;
+
+	/* If there is no passive scanning trigger, it means there is no
+	 * LE connection attempt going on.
+	 */
+	if (atomic_read(&hdev->passive_scan_cnt) == 0)
+		return NULL;
+
+	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
+	if (!conn)
+		return NULL;
+
+	if (conn->state != BT_CONNECT)
+		return NULL;
+
+	if (conn->dst_type != addr_type)
+		return NULL;
+
+	return conn;
+}
+
+void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
+			       __u8 addr_type)
+{
+	struct hci_conn *conn;
+	int err;
+
+	conn = find_pending_le_connection(hdev, addr, addr_type);
+	if (!conn)
+		return;
+
+	err = remove_passive_scan_trigger(hdev);
+	if (err) {
+		BT_ERR("Failed to remove passive scan trigger: err %d", err);
+		return;
+	}
+
+	err = initiate_le_connection(conn);
+	if (err) {
+		BT_ERR("Failed to initiate LE connection: err %d", err);
+		fail_pending(conn, HCI_ERROR_LOCAL_HOST_TERM);
+	}
 }
