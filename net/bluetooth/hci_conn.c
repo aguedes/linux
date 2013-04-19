@@ -1198,6 +1198,23 @@ struct hci_chan *hci_chan_lookup_handle(struct hci_dev *hdev, __u16 handle)
 	return hchan;
 }
 
+void hci_conn_check_passive_scanning(struct hci_dev *hdev)
+{
+	int err;
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return;
+
+	if (atomic_read(&hdev->passive_scan_cnt) == 0)
+		return;
+
+	err = enable_passive_scanning(hdev);
+	if (err) {
+		BT_ERR("Failed to enable passive scanning: err %d", err);
+		fail_all_le_pending(hdev, HCI_ERROR_LOCAL_HOST_TERM);
+	}
+}
+
 static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 {
 	struct hci_conn *conn;
@@ -1210,6 +1227,18 @@ static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 	conn = hci_conn_find_le_initiating(hdev);
 	if (conn)
 		hci_conn_fail_pending(conn, status);
+
+	/* Check the passive scanning since it may have been temporarily
+	 * disabled if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_conn_check_passive_scanning(hdev);
+}
+
+/* Check if controller supports scanning and initiating states combination */
+static bool is_state_combination_supported(struct hci_dev *hdev)
+{
+	 return (hdev->le_states[2] & BIT(6)) ? true : false;
 }
 
 static int initiate_le_connection(struct hci_conn *conn)
@@ -1220,6 +1249,19 @@ static int initiate_le_connection(struct hci_conn *conn)
 	int err;
 
 	hci_req_init(&req, hdev);
+
+	/* Disable passive scanning temporarily if controller doesn't support
+	 * states combination and we still have more triggers.
+	 */
+	if (!is_state_combination_supported(hdev) &&
+	    atomic_read(&hdev->passive_scan_cnt) > 0) {
+		struct hci_cp_le_set_scan_enable enable_cp;
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+	}
 
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = __constant_cpu_to_le16(0x0060);
