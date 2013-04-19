@@ -3549,6 +3549,8 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
 
+		hci_conn_check_le_pending(hdev, &ev->bdaddr, ev->bdaddr_type);
+
 		rssi = ev->data[ev->length];
 		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,
 				  NULL, rssi, 0, 1, ev->data, ev->length);
