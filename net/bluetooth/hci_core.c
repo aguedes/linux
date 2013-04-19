@@ -2106,6 +2106,8 @@ struct hci_dev *hci_alloc_dev(void)
 	hci_init_sysfs(hdev);
 	discovery_init(hdev);
 
+	atomic_set(&hdev->passive_scan_cnt, 0);
+
 	return hdev;
 }
 EXPORT_SYMBOL(hci_alloc_dev);
