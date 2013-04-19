@@ -280,6 +280,11 @@ struct hci_dev {
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
 	__u8			adv_data_len;
 
+	/* This counter tracks the number of LE connection attempts that
+	 * require the passive scanning running.
+	 */
+	atomic_t		passive_scan_cnt;
+
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
 	int (*flush)(struct hci_dev *hdev);
