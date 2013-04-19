@@ -31,6 +31,24 @@
 #include <net/bluetooth/a2mp.h>
 #include <net/bluetooth/smp.h>
 
+static void fail_pending(struct hci_conn *conn, u8 status)
+{
+	struct hci_dev *hdev = conn->hdev;
+
+	BT_DBG("conn %p bdaddr %pMR type %d", conn, &conn->dst,
+	       conn->dst_type);
+
+	mgmt_connect_failed(hdev, &conn->dst, conn->type, conn->dst_type,
+			    status);
+
+	conn->state = BT_CLOSED;
+	hci_proto_connect_cfm(conn, status);
+
+	hci_dev_lock(hdev);
+	hci_conn_del(conn);
+	hci_dev_unlock(hdev);
+}
+
 static void enable_passive_scan_complete(struct hci_dev *hdev, u8 status)
 {
 	struct hci_conn *conn;
@@ -41,18 +59,8 @@ static void enable_passive_scan_complete(struct hci_dev *hdev, u8 status)
 	BT_ERR("Failed to enable LE scanning: status 0x%2.2x", status);
 
 	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-	if (!conn)
-		return;
-
-	mgmt_connect_failed(hdev, &conn->dst, conn->type,
-			    conn->dst_type, status);
-
-	conn->state = BT_CLOSED;
-	hci_proto_connect_cfm(conn, status);
-
-	hci_dev_lock(hdev);
-	hci_conn_del(conn);
-	hci_dev_unlock(hdev);
+	if (conn)
+		fail_pending(conn, status);
 }
 
 static int add_passive_scan_trigger(struct hci_dev *hdev)
@@ -1129,4 +1137,41 @@ struct hci_chan *hci_chan_lookup_handle(struct hci_dev *hdev, __u16 handle)
 	rcu_read_unlock();
 
 	return hchan;
+}
+
+static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn *conn;
+
+	if (status == 0)
+		return;
+
+	BT_ERR("Failed to create LE connection: status 0x%2.2x", status);
+
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (conn)
+		fail_pending(conn, status);
+}
+
+static int initiate_le_connection(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_le_create_conn cp;
+	struct hci_request req;
+
+	hci_req_init(&req, hdev);
+
+	memset(&cp, 0, sizeof(cp));
+	cp.scan_interval = __constant_cpu_to_le16(0x0060);
+	cp.scan_window = __constant_cpu_to_le16(0x0030);
+	bacpy(&cp.peer_addr, &conn->dst);
+	cp.peer_addr_type = conn->dst_type;
+	cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
+	cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
+	cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
+	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
+	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
+	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
+
+	return hci_req_run(&req, initiate_le_connection_complete);
 }
