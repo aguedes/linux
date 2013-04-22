@@ -1314,6 +1314,12 @@ void hci_conn_check_le_pending(struct hci_dev *hdev, bdaddr_t *addr,
 	if (!conn)
 		return;
 
+	/* LE controller supports only one connection attempt at a time so
+	 * if there already is a connection attempt ongoing we should return.
+	 */
+	if (hci_conn_find_le_initiating(hdev))
+		return;
+
 	err = remove_passive_scan_trigger(hdev);
 	if (err) {
 		BT_ERR("Failed to remove passive scan trigger: err %d", err);
