@@ -49,63 +49,6 @@ static void fail_pending(struct hci_conn *conn, u8 status)
 	hci_dev_unlock(hdev);
 }
 
-static void enable_passive_scan_complete(struct hci_dev *hdev, u8 status)
-{
-	struct hci_conn *conn;
-
-	if (status == 0)
-		return;
-
-	BT_ERR("Failed to enable LE scanning: status 0x%2.2x", status);
-
-	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-	if (conn)
-		fail_pending(conn, status);
-}
-
-static int add_passive_scan_trigger(struct hci_dev *hdev)
-{
-	struct hci_cp_le_set_scan_param param_cp;
-	struct hci_cp_le_set_scan_enable enable_cp;
-	struct hci_request req;
-	int err;
-
-	BT_DBG("%s", hdev->name);
-
-	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
-		goto out;
-
-	/* If we already have more triggers, we should not start passive
-	 * scanning now. The passive scannig will be started in a convenient
-	 * time in future.
-	 */
-	if (atomic_read(&hdev->passive_scan_cnt) > 0)
-		goto out;
-
-	hci_req_init(&req, hdev);
-
-	memset(&param_cp, 0, sizeof(param_cp));
-	param_cp.type = LE_SCAN_PASSIVE;
-	param_cp.interval = cpu_to_le16(0x0060);
-	param_cp.window = cpu_to_le16(0x0030);
-	hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
-		    &param_cp);
-
-	memset(&enable_cp, 0, sizeof(enable_cp));
-	enable_cp.enable = LE_SCAN_ENABLE;
-	enable_cp.filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
-	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
-		    &enable_cp);
-
-	err = hci_req_run(&req, enable_passive_scan_complete);
-	if (err)
-		return err;
-
-out:
-	atomic_inc(&hdev->passive_scan_cnt);
-	return 0;
-}
-
 static void disable_passive_scan_complete(struct hci_dev *hdev, u8 status)
 {
 	if (status)
@@ -138,6 +81,90 @@ static int remove_passive_scan_trigger(struct hci_dev *hdev)
 
 out:
 	atomic_dec(&hdev->passive_scan_cnt);
+	return 0;
+}
+
+static void fail_all_le_pending(struct hci_dev *hdev, u8 status)
+{
+	struct hci_conn_hash *hash = &hdev->conn_hash;
+	struct hci_conn *conn, *tmp;
+	int err;
+
+	list_for_each_entry_safe(conn, tmp, &hash->list, list) {
+		if (conn->type != LE_LINK)
+			continue;
+		if (conn->state != BT_CONNECT)
+			continue;
+		if (conn->le_initiating)
+			continue;
+
+		err = remove_passive_scan_trigger(hdev);
+		if (err) {
+			BT_ERR("Failed to remove passive scan trigger: err %d",
+			       err);
+			return;
+		}
+
+		fail_pending(conn, status);
+	}
+}
+
+static void enable_passive_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status == 0)
+		return;
+
+	BT_ERR("Failed to enable LE scanning: status 0x%2.2x", status);
+
+	fail_all_le_pending(hdev, status);
+}
+
+static int enable_passive_scanning(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_param param_cp;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_request req;
+
+	hci_req_init(&req, hdev);
+
+	memset(&param_cp, 0, sizeof(param_cp));
+	param_cp.type = LE_SCAN_PASSIVE;
+	param_cp.interval = cpu_to_le16(0x0060);
+	param_cp.window = cpu_to_le16(0x0030);
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
+		    &param_cp);
+
+	memset(&enable_cp, 0, sizeof(enable_cp));
+	enable_cp.enable = LE_SCAN_ENABLE;
+	enable_cp.filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+		    &enable_cp);
+
+	return hci_req_run(&req, enable_passive_scan_complete);
+}
+
+static int add_passive_scan_trigger(struct hci_dev *hdev)
+{
+	int err;
+
+	BT_DBG("%s", hdev->name);
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		goto out;
+
+	/* If we already have more triggers, we should not start passive
+	 * scanning now. The passive scannig will be started in a convenient
+	 * time in future.
+	 */
+	if (atomic_read(&hdev->passive_scan_cnt) > 0)
+		goto out;
+
+	err = enable_passive_scanning(hdev);
+	if (err)
+		return err;
+
+out:
+	atomic_inc(&hdev->passive_scan_cnt);
 	return 0;
 }
 
