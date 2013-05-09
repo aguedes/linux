@@ -1250,10 +1250,13 @@ static int initiate_le_connection(struct hci_conn *conn)
 
 	hci_req_init(&req, hdev);
 
-	/* Disable passive scanning temporarily if controller doesn't support
-	 * states combination and we still have more triggers.
+	if (is_state_combination_supported(hdev))
+		goto initiate_conn;
+
+	/* If device discovery procedure is running or we have more passive
+	 * scanning triggers, we should disable the scanning.
 	 */
-	if (!is_state_combination_supported(hdev) &&
+	if (hdev->discovery.state == DISCOVERY_FINDING ||
 	    atomic_read(&hdev->passive_scan_cnt) > 0) {
 		struct hci_cp_le_set_scan_enable enable_cp;
 
@@ -1261,8 +1264,12 @@ static int initiate_le_connection(struct hci_conn *conn)
 		enable_cp.enable = LE_SCAN_DISABLE;
 		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
 			    &enable_cp);
+
+		cancel_delayed_work(&hdev->le_scan_disable);
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 	}
 
+initiate_conn:
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = __constant_cpu_to_le16(0x0060);
 	cp.scan_window = __constant_cpu_to_le16(0x0030);
