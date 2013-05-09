@@ -1496,6 +1496,11 @@ void hci_discovery_set_state(struct hci_dev *hdev, int state)
 
 	switch (state) {
 	case DISCOVERY_STOPPED:
+		/* Check the background scanning since it may have been
+		 * temporarily stopped by the start discovery command.
+		 */
+		hci_check_background_scan(hdev);
+
 		if (hdev->discovery.state != DISCOVERY_STARTING)
 			mgmt_discovering(hdev, 0);
 		break;
