@@ -65,6 +65,10 @@ static int remove_passive_scan_trigger(struct hci_dev *hdev)
 	if (!test_bit(HCI_LE_SCAN, &hdev->dev_flags))
 		goto out;
 
+	/* If device discovery is running, don't disable scanning. */
+	if (hdev->discovery.state == DISCOVERY_FINDING)
+		goto out;
+
 	/* If we have more triggers, we should keep scanning. */
 	if (atomic_read(&hdev->passive_scan_cnt) > 1)
 		goto out;
