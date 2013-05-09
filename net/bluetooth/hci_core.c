@@ -729,6 +729,11 @@ void hci_discovery_set_state(struct hci_dev *hdev, int state)
 
 	switch (state) {
 	case DISCOVERY_STOPPED:
+		/* Check the passive scanning since it may have been
+		 * temporarily disabled by the start discovery command.
+		 */
+		hci_conn_check_passive_scanning(hdev);
+
 		if (hdev->discovery.state != DISCOVERY_STARTING)
 			mgmt_discovering(hdev, 0);
 		break;
