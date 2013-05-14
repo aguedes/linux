@@ -138,6 +138,17 @@ struct amp_assoc {
 	__u8	data[HCI_MAX_AMP_ASSOC_SIZE];
 };
 
+struct discovery_param {
+	u8		scan_type;
+	u16		scan_interval;
+	u16		scan_window;
+	u16		interleaved_scan_timeout;
+	u16		le_scan_timeout;
+
+	u8		interleaved_inquiry_length;
+	u8		bredr_inquiry_length;
+};
+
 #define HCI_MAX_PAGES	3
 
 #define NUM_REASSEMBLY 4
@@ -292,6 +303,8 @@ struct hci_dev {
 	__s8			adv_tx_power;
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
 	__u8			adv_data_len;
+
+	struct discovery_param	discovery_param;
 
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
