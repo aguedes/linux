@@ -2032,6 +2032,7 @@ static void le_scan_disable_work_complete(struct hci_dev *hdev, u8 status)
 {
 	/* General inquiry access code (GIAC) */
 	u8 lap[3] = { 0x33, 0x8b, 0x9e };
+	struct discovery_param *discov = &hdev->discovery_param;
 	struct hci_request req;
 	struct hci_cp_inquiry cp;
 	int err;
@@ -2053,7 +2054,7 @@ static void le_scan_disable_work_complete(struct hci_dev *hdev, u8 status)
 
 		memset(&cp, 0, sizeof(cp));
 		memcpy(&cp.lap, lap, sizeof(cp.lap));
-		cp.length = DISCOV_INTERLEAVED_INQUIRY_LEN;
+		cp.length = discov->interleaved_inquiry_length;
 		hci_req_add(&req, HCI_OP_INQUIRY, sizeof(cp), &cp);
 
 		hci_dev_lock(hdev);
@@ -2096,6 +2097,7 @@ static void le_scan_disable_work(struct work_struct *work)
 struct hci_dev *hci_alloc_dev(void)
 {
 	struct hci_dev *hdev;
+	struct discovery_param *discov;
 
 	hdev = kzalloc(sizeof(struct hci_dev), GFP_KERNEL);
 	if (!hdev)
@@ -2141,6 +2143,15 @@ struct hci_dev *hci_alloc_dev(void)
 
 	hci_init_sysfs(hdev);
 	discovery_init(hdev);
+
+	discov = &hdev->discovery_param;
+	discov->scan_type = LE_SCAN_ACTIVE;
+	discov->scan_interval = DISCOV_LE_SCAN_INT;
+	discov->scan_window = DISCOV_LE_SCAN_WIN;
+	discov->le_scan_timeout = DISCOV_LE_TIMEOUT;
+	discov->interleaved_scan_timeout = DISCOV_INTERLEAVED_TIMEOUT;
+	discov->interleaved_inquiry_length = DISCOV_INTERLEAVED_INQUIRY_LEN;
+	discov->bredr_inquiry_length = DISCOV_BREDR_INQUIRY_LEN;
 
 	return hdev;
 }
