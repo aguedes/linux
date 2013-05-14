@@ -2642,6 +2642,8 @@ static int mgmt_start_discovery_failed(struct hci_dev *hdev, u8 status)
 
 static void start_discovery_complete(struct hci_dev *hdev, u8 status)
 {
+	struct discovery_param *discov = &hdev->discovery_param;
+
 	BT_DBG("status %d", status);
 
 	if (status) {
@@ -2658,12 +2660,12 @@ static void start_discovery_complete(struct hci_dev *hdev, u8 status)
 	switch (hdev->discovery.type) {
 	case DISCOV_TYPE_LE:
 		queue_delayed_work(hdev->workqueue, &hdev->le_scan_disable,
-				   DISCOV_LE_TIMEOUT);
+				   discov->le_scan_duration);
 		break;
 
 	case DISCOV_TYPE_INTERLEAVED:
 		queue_delayed_work(hdev->workqueue, &hdev->le_scan_disable,
-				   DISCOV_INTERLEAVED_TIMEOUT);
+				   discov->interleaved_scan_duration);
 		break;
 
 	case DISCOV_TYPE_BREDR:
@@ -2678,6 +2680,7 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 			   void *data, u16 len)
 {
 	struct mgmt_cp_start_discovery *cp = data;
+	struct discovery_param *discov = &hdev->discovery_param;
 	struct pending_cmd *cmd;
 	struct hci_cp_le_set_scan_param param_cp;
 	struct hci_cp_le_set_scan_enable enable_cp;
@@ -2739,7 +2742,7 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 
 		memset(&inq_cp, 0, sizeof(inq_cp));
 		memcpy(&inq_cp.lap, lap, sizeof(inq_cp.lap));
-		inq_cp.length = DISCOV_BREDR_INQUIRY_LEN;
+		inq_cp.length = discov->bredr_inquiry_length;
 		hci_req_add(&req, HCI_OP_INQUIRY, sizeof(inq_cp), &inq_cp);
 		break;
 
@@ -2779,9 +2782,9 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 		}
 
 		memset(&param_cp, 0, sizeof(param_cp));
-		param_cp.type = LE_SCAN_ACTIVE;
-		param_cp.interval = cpu_to_le16(DISCOV_LE_SCAN_INT);
-		param_cp.window = cpu_to_le16(DISCOV_LE_SCAN_WIN);
+		param_cp.type = discov->scan_type;
+		param_cp.interval = cpu_to_le16(discov->scan_interval);
+		param_cp.window = cpu_to_le16(discov->scan_window);
 		hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
 			    &param_cp);
 

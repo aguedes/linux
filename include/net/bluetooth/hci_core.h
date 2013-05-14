@@ -127,6 +127,17 @@ struct amp_assoc {
 	__u8	data[HCI_MAX_AMP_ASSOC_SIZE];
 };
 
+struct discovery_param {
+	u8		scan_type;
+	u16		scan_interval;
+	u16		scan_window;
+	unsigned int	interleaved_scan_duration;
+	unsigned int	le_scan_duration;
+
+	u8		interleaved_inquiry_length;
+	u8		bredr_inquiry_length;
+};
+
 #define HCI_MAX_PAGES	3
 
 #define NUM_REASSEMBLY 4
@@ -284,6 +295,8 @@ struct hci_dev {
 	 * require the passive scanning running.
 	 */
 	atomic_t		passive_scan_cnt;
+
+	struct discovery_param	discovery_param;
 
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
