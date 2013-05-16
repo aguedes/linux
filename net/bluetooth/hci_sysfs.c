@@ -531,6 +531,35 @@ static int auto_accept_delay_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(auto_accept_delay_fops, auto_accept_delay_get,
 			auto_accept_delay_set, "%llu\n");
 
+static int discovery_parameters_show(struct seq_file *f, void *ptr)
+{
+	struct hci_dev *hdev = f->private;
+	struct discovery_param *p = &hdev->discovery_param;
+
+	hci_dev_lock(hdev);
+
+	seq_printf(f, "0x%.2x 0x%.4x 0x%.4x %u %u 0x%.2x 0x%.2x\n",
+		   p->scan_type, p->scan_interval, p->scan_window,
+		   p->le_scan_duration, p->interleaved_scan_duration,
+		   p->interleaved_inquiry_length, p->bredr_inquiry_length);
+
+	hci_dev_unlock(hdev);
+
+	return 0;
+}
+
+static int discovery_parameters_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, discovery_parameters_show, inode->i_private);
+}
+
+static const struct file_operations discovery_parameters_fops = {
+	.open		= discovery_parameters_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 void hci_init_sysfs(struct hci_dev *hdev)
 {
 	struct device *dev = &hdev->dev;
@@ -572,6 +601,9 @@ int hci_add_sysfs(struct hci_dev *hdev)
 
 	debugfs_create_file("auto_accept_delay", 0444, hdev->debugfs, hdev,
 			    &auto_accept_delay_fops);
+
+	debugfs_create_file("discovery_parameters", 0444, hdev->debugfs, hdev,
+			    &discovery_parameters_fops);
 	return 0;
 }
 
