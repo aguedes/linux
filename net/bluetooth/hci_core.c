@@ -1181,6 +1181,8 @@ int hci_dev_open(__u16 dev)
 	clear_bit(HCI_INIT, &hdev->flags);
 
 	if (!ret) {
+		int err;
+
 		hci_dev_hold(hdev);
 		set_bit(HCI_UP, &hdev->flags);
 		hci_notify(hdev, HCI_DEV_UP);
@@ -1190,6 +1192,10 @@ int hci_dev_open(__u16 dev)
 			mgmt_powered(hdev, 1);
 			hci_dev_unlock(hdev);
 		}
+
+		err = hci_add_sysfs(hdev);
+		if (err)
+			BT_ERR("Failed to add hdev to debugfs: err %d", err);
 	} else {
 		/* Init failed, cleanup */
 		flush_work(&hdev->tx_work);
@@ -1231,6 +1237,8 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 		hci_req_unlock(hdev);
 		return 0;
 	}
+
+	hci_del_sysfs(hdev);
 
 	/* Flush RX and TX works */
 	flush_work(&hdev->tx_work);
@@ -2196,10 +2204,6 @@ int hci_register_dev(struct hci_dev *hdev)
 		goto err;
 	}
 
-	error = hci_add_sysfs(hdev);
-	if (error < 0)
-		goto err_wqueue;
-
 	hdev->rfkill = rfkill_alloc(hdev->name, &hdev->dev,
 				    RFKILL_TYPE_BLUETOOTH, &hci_rfkill_ops,
 				    hdev);
@@ -2222,9 +2226,6 @@ int hci_register_dev(struct hci_dev *hdev)
 
 	return id;
 
-err_wqueue:
-	destroy_workqueue(hdev->workqueue);
-	destroy_workqueue(hdev->req_workqueue);
 err:
 	ida_simple_remove(&hci_index_ida, hdev->id);
 	write_lock(&hci_dev_list_lock);
@@ -2274,8 +2275,6 @@ void hci_unregister_dev(struct hci_dev *hdev)
 		rfkill_unregister(hdev->rfkill);
 		rfkill_destroy(hdev->rfkill);
 	}
-
-	hci_del_sysfs(hdev);
 
 	destroy_workqueue(hdev->workqueue);
 	destroy_workqueue(hdev->req_workqueue);
