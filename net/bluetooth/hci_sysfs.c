@@ -571,6 +571,42 @@ static void add_le_connection_parameters(struct hci_dev *hdev)
 			   &param->conn_latency);
 }
 
+static void add_discovery_parameters(struct hci_dev *hdev)
+{
+	struct discovery_param *param = &hdev->discovery_param;
+	struct dentry *dir;
+
+	dir = debugfs_create_dir("discovery_param", hdev->debugfs);
+	if (!dir) {
+		BT_ERR("Failed to add discovery parameters to debugfs");
+		return;
+	}
+
+	if (lmp_le_capable(hdev)) {
+		debugfs_create_x8("scan_type", S_IRUSR|S_IWUSR, dir,
+				&param->scan_type);
+		debugfs_create_x16("scan_interval", S_IRUSR|S_IWUSR, dir,
+				&param->scan_interval);
+		debugfs_create_x16("scan_window", S_IRUSR|S_IWUSR, dir,
+				&param->scan_window);
+		debugfs_create_u16("le_scan_timeout", S_IRUSR|S_IWUSR, dir,
+				&param->le_scan_timeout);
+	}
+
+	if (lmp_bredr_capable(hdev)) {
+		debugfs_create_x8("bredr_inquiry_length", S_IRUSR|S_IWUSR, dir,
+				&param->bredr_inquiry_length);
+	}
+
+	if (lmp_le_capable(hdev) && lmp_bredr_capable(hdev)) {
+		debugfs_create_x8("interleaved_inquiry_length",
+				   S_IRUSR|S_IWUSR, dir,
+				   &param->interleaved_inquiry_length);
+		debugfs_create_u16("interleaved_scan_timeout", S_IRUSR|S_IWUSR,
+				   dir,	&param->interleaved_scan_timeout);
+	}
+}
+
 int hci_add_sysfs(struct hci_dev *hdev)
 {
 	struct device *dev = &hdev->dev;
@@ -595,6 +631,8 @@ int hci_add_sysfs(struct hci_dev *hdev)
 			    hdev, &blacklist_fops);
 
 	debugfs_create_file("uuids", 0444, hdev->debugfs, hdev, &uuids_fops);
+
+	add_discovery_parameters(hdev);
 
 	if (lmp_bredr_capable(hdev)) {
 		debugfs_create_file("inquiry_cache", 0444, hdev->debugfs,
