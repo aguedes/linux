@@ -542,6 +542,35 @@ void hci_init_sysfs(struct hci_dev *hdev)
 	device_initialize(dev);
 }
 
+static void add_le_connection_parameters(struct hci_dev *hdev)
+{
+	struct le_conn_param *param = &hdev->le_conn_param;
+	struct dentry *dir;
+
+	dir = debugfs_create_dir("le_conn_param", hdev->debugfs);
+	if (!dir) {
+		BT_ERR("Failed to add LE connection parameters to debugfs");
+		return;
+	}
+
+	debugfs_create_x16("scan_interval", S_IRUSR|S_IWUSR, dir,
+			   &param->scan_interval);
+	debugfs_create_x16("scan_window", S_IRUSR|S_IWUSR, dir,
+			   &param->scan_window);
+	debugfs_create_x16("conn_interval_min", S_IRUSR|S_IWUSR, dir,
+			   &param->conn_interval_min);
+	debugfs_create_x16("conn_interval_max", S_IRUSR|S_IWUSR, dir,
+			   &param->conn_interval_max);
+	debugfs_create_x16("supervision_timeout", S_IRUSR|S_IWUSR, dir,
+			   &param->supervision_timeout);
+	debugfs_create_x16("min_ce_lentgh", S_IRUSR|S_IWUSR, dir,
+			   &param->min_ce_lentgh);
+	debugfs_create_x16("max_ce_lentgh", S_IRUSR|S_IWUSR, dir,
+			   &param->max_ce_lentgh);
+	debugfs_create_x16("conn_latency", S_IRUSR|S_IWUSR, dir,
+			   &param->conn_latency);
+}
+
 int hci_add_sysfs(struct hci_dev *hdev)
 {
 	struct device *dev = &hdev->dev;
@@ -573,6 +602,9 @@ int hci_add_sysfs(struct hci_dev *hdev)
 		debugfs_create_file("auto_accept_delay", 0444, hdev->debugfs,
 				    hdev, &auto_accept_delay_fops);
 	}
+
+	if (lmp_le_capable(hdev))
+		add_le_connection_parameters(hdev);
 
 	return 0;
 }
