@@ -545,11 +545,36 @@ void hci_init_sysfs(struct hci_dev *hdev)
 /* This function expects hdev has been already intialized */
 void hci_sysfs_export_info(struct hci_dev *hdev)
 {
+	struct discovery_param *discov = &hdev->discovery_param;
+
 	if (lmp_bredr_capable(hdev)) {
 		debugfs_create_file("inquiry_cache", 0444, hdev->debugfs,
 				    hdev, &inquiry_cache_fops);
 		debugfs_create_file("auto_accept_delay", 0444, hdev->debugfs,
 				    hdev, &auto_accept_delay_fops);
+		debugfs_create_x8("discov_bredr_inq_len", S_IRUSR|S_IWUSR,
+				  hdev->debugfs,
+				  &discov->bredr_inquiry_length);
+	}
+
+	if (lmp_le_capable(hdev)) {
+		debugfs_create_x8("discov_scan_type", S_IRUSR|S_IWUSR,
+				  hdev->debugfs, &discov->scan_type);
+		debugfs_create_x16("discov_scan_interval", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &discov->scan_interval);
+		debugfs_create_x16("discov_scan_window", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &discov->scan_window);
+		debugfs_create_u16("discov_le_scan_timeout", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &discov->le_scan_timeout);
+	}
+
+	if (lmp_le_capable(hdev) && lmp_bredr_capable(hdev)) {
+		debugfs_create_x8("discov_interleaved_inq_len",
+				  S_IRUSR|S_IWUSR, hdev->debugfs,
+				   &discov->interleaved_inquiry_length);
+		debugfs_create_u16("discov_interleaved_scan_timeout",
+				   S_IRUSR|S_IWUSR, hdev->debugfs,
+				   &discov->interleaved_scan_timeout);
 	}
 }
 
