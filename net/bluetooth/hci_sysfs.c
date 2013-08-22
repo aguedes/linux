@@ -546,6 +546,7 @@ void hci_init_sysfs(struct hci_dev *hdev)
 void hci_sysfs_export_info(struct hci_dev *hdev)
 {
 	struct discovery_param *discov = &hdev->discovery_param;
+	struct le_conn_param *conn = &hdev->le_conn_param;
 
 	if (lmp_bredr_capable(hdev)) {
 		debugfs_create_file("inquiry_cache", 0444, hdev->debugfs,
@@ -558,6 +559,7 @@ void hci_sysfs_export_info(struct hci_dev *hdev)
 	}
 
 	if (lmp_le_capable(hdev)) {
+		/* Discovery parameters */
 		debugfs_create_x8("discov_scan_type", S_IRUSR|S_IWUSR,
 				  hdev->debugfs, &discov->scan_type);
 		debugfs_create_x16("discov_scan_interval", S_IRUSR|S_IWUSR,
@@ -566,6 +568,25 @@ void hci_sysfs_export_info(struct hci_dev *hdev)
 				   hdev->debugfs, &discov->scan_window);
 		debugfs_create_u16("discov_le_scan_timeout", S_IRUSR|S_IWUSR,
 				   hdev->debugfs, &discov->le_scan_timeout);
+
+		/* Connection parameters */
+		debugfs_create_x16("le_conn_scan_interval", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->scan_interval);
+		debugfs_create_x16("le_conn_scan_window", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->scan_window);
+		debugfs_create_x16("le_conn_interval_min", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->conn_interval_min);
+		debugfs_create_x16("le_conn_interval_max", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->conn_interval_max);
+		debugfs_create_x16("le_conn_supervision_timeout",
+				   S_IRUSR|S_IWUSR, hdev->debugfs,
+				   &conn->supervision_timeout);
+		debugfs_create_x16("le_conn_min_ce_lentgh", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->min_ce_lentgh);
+		debugfs_create_x16("le_conn_max_ce_lentgh", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->max_ce_lentgh);
+		debugfs_create_x16("le_conn_latency", S_IRUSR|S_IWUSR,
+				   hdev->debugfs, &conn->conn_latency);
 	}
 
 	if (lmp_le_capable(hdev) && lmp_bredr_capable(hdev)) {
