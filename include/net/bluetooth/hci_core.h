@@ -775,6 +775,7 @@ int hci_recv_stream_fragment(struct hci_dev *hdev, void *data, int count);
 void hci_init_sysfs(struct hci_dev *hdev);
 int hci_add_sysfs(struct hci_dev *hdev);
 void hci_del_sysfs(struct hci_dev *hdev);
+void hci_sysfs_export_info(struct hci_dev *hdev);
 void hci_conn_init_sysfs(struct hci_conn *conn);
 void hci_conn_add_sysfs(struct hci_conn *conn);
 void hci_conn_del_sysfs(struct hci_conn *conn);

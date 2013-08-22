@@ -542,6 +542,17 @@ void hci_init_sysfs(struct hci_dev *hdev)
 	device_initialize(dev);
 }
 
+/* This function expects hdev has been already intialized */
+void hci_sysfs_export_info(struct hci_dev *hdev)
+{
+	if (lmp_bredr_capable(hdev)) {
+		debugfs_create_file("inquiry_cache", 0444, hdev->debugfs,
+				    hdev, &inquiry_cache_fops);
+		debugfs_create_file("auto_accept_delay", 0444, hdev->debugfs,
+				    hdev, &auto_accept_delay_fops);
+	}
+}
+
 int hci_add_sysfs(struct hci_dev *hdev)
 {
 	struct device *dev = &hdev->dev;
@@ -562,16 +573,11 @@ int hci_add_sysfs(struct hci_dev *hdev)
 	if (!hdev->debugfs)
 		return 0;
 
-	debugfs_create_file("inquiry_cache", 0444, hdev->debugfs,
-			    hdev, &inquiry_cache_fops);
-
 	debugfs_create_file("blacklist", 0444, hdev->debugfs,
 			    hdev, &blacklist_fops);
 
 	debugfs_create_file("uuids", 0444, hdev->debugfs, hdev, &uuids_fops);
 
-	debugfs_create_file("auto_accept_delay", 0444, hdev->debugfs, hdev,
-			    &auto_accept_delay_fops);
 	return 0;
 }
 

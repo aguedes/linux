@@ -1184,11 +1184,18 @@ int hci_dev_open(__u16 dev)
 		hci_dev_hold(hdev);
 		set_bit(HCI_UP, &hdev->flags);
 		hci_notify(hdev, HCI_DEV_UP);
-		if (!test_bit(HCI_SETUP, &hdev->dev_flags) &&
-		    mgmt_valid_hdev(hdev)) {
-			hci_dev_lock(hdev);
-			mgmt_powered(hdev, 1);
-			hci_dev_unlock(hdev);
+		if (mgmt_valid_hdev(hdev)) {
+			/* If we are in HCI_SETUP phase, meaning the device
+			 * has just been registered, we should export the
+			 * remaining infos to debugfs.
+			 */
+			if (test_bit(HCI_SETUP, &hdev->dev_flags)) {
+				hci_sysfs_export_info(hdev);
+			} else {
+				hci_dev_lock(hdev);
+				mgmt_powered(hdev, 1);
+				hci_dev_unlock(hdev);
+			}
 		}
 	} else {
 		/* Init failed, cleanup */
