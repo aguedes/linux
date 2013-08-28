@@ -33,6 +33,13 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
+struct auto_connect_entry {
+	struct list_head list;
+
+	bdaddr_t addr;
+	u8 type;
+};
+
 static void hci_rx_work(struct work_struct *work);
 static void hci_cmd_work(struct work_struct *work);
 static void hci_tx_work(struct work_struct *work);
@@ -2119,6 +2126,82 @@ static void le_scan_disable_work(struct work_struct *work)
 		BT_ERR("Disable LE scanning request failed: err %d", err);
 }
 
+bool hci_is_auto_connect_address(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
+{
+	struct auto_connect_entry *entry;
+	bool found = false;
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(entry, &hdev->auto_connect, list) {
+		if (bacmp(&entry->addr, addr))
+			continue;
+		if (entry->type != type)
+			continue;
+
+		found = true;
+		break;
+	}
+
+	rcu_read_unlock();
+
+	return found;
+}
+
+/*
+ * Insert a new tuple (address, type) into hdev->auto_connect list.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static int __add_auto_connect_address(struct hci_dev *hdev, bdaddr_t *addr,
+				      u8 type)
+{
+	struct auto_connect_entry *entry;
+
+	/* Don't allow duplicated entries. If this entry was already inserted,
+	 * return success.
+	 */
+	if (hci_is_auto_connect_address(hdev, addr, type))
+		return 0;
+
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry)
+		return -ENOMEM;
+
+	bacpy(&entry->addr, addr);
+	entry->type = type;
+
+	list_add_rcu(&entry->list, &hdev->auto_connect);
+
+	return 0;
+}
+
+/*
+ * Delete auto connect address from the hdev->auto_connect list.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static void __delete_auto_connect_address(struct auto_connect_entry *entry)
+{
+	list_del_rcu(&entry->list);
+	synchronize_rcu();
+
+	kfree(entry);
+}
+
+/*
+ * Delete all elements from hdev->auto_connect list.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static void __clear_auto_connect(struct hci_dev *hdev)
+{
+	struct auto_connect_entry *entry, *tmp;
+
+	list_for_each_entry_safe(entry, tmp, &hdev->auto_connect, list)
+		__delete_auto_connect_address(entry);
+}
+
 /* Alloc HCI device */
 struct hci_dev *hci_alloc_dev(void)
 {
@@ -2147,6 +2230,7 @@ struct hci_dev *hci_alloc_dev(void)
 	INIT_LIST_HEAD(&hdev->link_keys);
 	INIT_LIST_HEAD(&hdev->long_term_keys);
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
+	INIT_LIST_HEAD(&hdev->auto_connect);
 	INIT_LIST_HEAD(&hdev->conn_hash.list);
 
 	INIT_WORK(&hdev->rx_work, hci_rx_work);
@@ -2322,6 +2406,7 @@ void hci_unregister_dev(struct hci_dev *hdev)
 	hci_link_keys_clear(hdev);
 	hci_smp_ltks_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
+	__clear_auto_connect(hdev);
 	hci_dev_unlock(hdev);
 
 	hci_dev_put(hdev);
