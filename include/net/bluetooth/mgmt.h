@@ -351,6 +351,13 @@ struct mgmt_cp_set_device_id {
 } __packed;
 #define MGMT_SET_DEVICE_ID_SIZE		8
 
+#define MGMT_OP_LOAD_AUTO_CONN_ADDRS	0x0029
+struct mgmt_cp_load_auto_conn_addrs {
+	__le16 count;
+	struct mgmt_addr_info addrs[0];
+} __packed;
+#define MGMT_LOAD_AUTO_CONN_ADDRS_SIZE	2
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;

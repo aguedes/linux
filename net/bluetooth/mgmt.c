@@ -3232,6 +3232,45 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 	return err;
 }
 
+static int load_auto_conn_addrs(struct sock *sk, struct hci_dev *hdev,
+				       void *cp_data, u16 len)
+{
+	struct mgmt_cp_load_auto_conn_addrs *cp = cp_data;
+	u8 mgmt_status = MGMT_STATUS_SUCCESS;
+	u16 count, expected_len;
+	int i;
+
+	count = __le16_to_cpu(cp->count);
+
+	expected_len = sizeof(*cp) + count * sizeof(struct mgmt_addr_info);
+
+	if (len != expected_len) {
+		mgmt_status = MGMT_STATUS_INVALID_PARAMS;
+		goto out;
+	}
+
+	hci_dev_lock(hdev);
+
+	__hci_reset_auto_connect(hdev);
+
+	for (i = 0; i < count; i++) {
+		struct mgmt_addr_info *info = &cp->addrs[i];
+
+		if (__hci_set_auto_connect(hdev, &info->bdaddr,	info->type)) {
+			__hci_reset_auto_connect(hdev);
+
+			mgmt_status = MGMT_STATUS_FAILED;
+			goto unlock;
+		}
+	}
+
+unlock:
+	hci_dev_unlock(hdev);
+out:
+	return cmd_complete(sk, hdev->id, MGMT_OP_LOAD_AUTO_CONN_ADDRS,
+			    mgmt_status, NULL, 0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -3279,6 +3318,7 @@ static const struct mgmt_handler {
 	{ block_device,           false, MGMT_BLOCK_DEVICE_SIZE },
 	{ unblock_device,         false, MGMT_UNBLOCK_DEVICE_SIZE },
 	{ set_device_id,          false, MGMT_SET_DEVICE_ID_SIZE },
+	{ load_auto_conn_addrs,   true,  MGMT_LOAD_AUTO_CONN_ADDRS_SIZE},
 };
 
 
