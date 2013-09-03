@@ -280,6 +280,10 @@ struct hci_dev {
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
 	__u8			adv_data_len;
 
+	/* This counter tracks the number of background scanning triggers
+	 */
+	atomic_t		background_scan_cnt;
+
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
 	int (*flush)(struct hci_dev *hdev);
@@ -1222,5 +1226,8 @@ int hci_initiate_le_connection(struct hci_dev *hdev, bdaddr_t *addr, u8 type);
 #define SCO_AIRMODE_MASK       0x0003
 #define SCO_AIRMODE_CVSD       0x0000
 #define SCO_AIRMODE_TRANSP     0x0003
+
+int hci_trigger_background_scan(struct hci_dev *hdev);
+int hci_untrigger_background_scan(struct hci_dev *hdev);
 
 #endif /* __HCI_CORE_H */
