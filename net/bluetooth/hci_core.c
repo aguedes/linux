@@ -2402,6 +2402,8 @@ struct hci_dev *hci_alloc_dev(void)
 	hci_init_sysfs(hdev);
 	discovery_init(hdev);
 
+	atomic_set(&hdev->background_scan_cnt, 0);
+
 	return hdev;
 }
 EXPORT_SYMBOL(hci_alloc_dev);
@@ -3785,4 +3787,82 @@ static void hci_cmd_work(struct work_struct *work)
 			queue_work(hdev->workqueue, &hdev->cmd_work);
 		}
 	}
+}
+
+static void start_background_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status)
+		BT_DBG("HCI request failed to start background scanning: "
+		       "status 0x%2.2x", status);
+}
+
+int hci_trigger_background_scan(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_param param_cp;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_request req;
+	int err;
+
+	BT_DBG("%s", hdev->name);
+
+	/* If we already have triggers, there is no need to send HCI command
+	 * to start the background scanning.
+	 */
+	if (atomic_read(&hdev->background_scan_cnt) > 0)
+		goto done;
+
+	hci_req_init(&req, hdev);
+
+	memset(&param_cp, 0, sizeof(param_cp));
+	param_cp.type = LE_SCAN_PASSIVE;
+	param_cp.interval = cpu_to_le16(hdev->le_scan_interval);
+	param_cp.window = cpu_to_le16(hdev->le_scan_window);
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
+		    &param_cp);
+
+	memset(&enable_cp, 0, sizeof(enable_cp));
+	enable_cp.enable = LE_SCAN_ENABLE;
+	enable_cp.filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+		    &enable_cp);
+
+	err = hci_req_run(&req, start_background_scan_complete);
+	if (err)
+		return err;
+
+done:
+	atomic_inc(&hdev->background_scan_cnt);
+	return 0;
+}
+
+static void stop_background_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status)
+		BT_DBG("HCI request failed to stop background scanning: "
+		       "status 0x%2.2x", status);
+}
+
+int hci_untrigger_background_scan(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_enable cp;
+	struct hci_request req;
+	int err;
+
+	/* If we have more triggers, we should keep scanning. */
+	if (atomic_read(&hdev->background_scan_cnt) > 1)
+		goto done;
+
+	hci_req_init(&req, hdev);
+
+	memset(&cp, 0, sizeof(cp));
+	cp.enable = LE_SCAN_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
+
+	err = hci_req_run(&req, stop_background_scan_complete);
+	if (err)
+		return err;
+
+done:
+	atomic_dec(&hdev->background_scan_cnt);
+	return 0;
 }
