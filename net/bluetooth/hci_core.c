@@ -3888,20 +3888,11 @@ static void start_background_scan_complete(struct hci_dev *hdev, u8 status)
 		       "status 0x%2.2x", status);
 }
 
-int hci_trigger_background_scan(struct hci_dev *hdev)
+static int start_background_scan(struct hci_dev *hdev)
 {
 	struct hci_cp_le_set_scan_param param_cp;
 	struct hci_cp_le_set_scan_enable enable_cp;
 	struct hci_request req;
-	int err;
-
-	BT_DBG("%s", hdev->name);
-
-	/* If we already have triggers, there is no need to send HCI command
-	 * to start the background scanning.
-	 */
-	if (atomic_read(&hdev->background_scan_cnt) > 0)
-		goto done;
 
 	hci_req_init(&req, hdev);
 
@@ -3918,7 +3909,22 @@ int hci_trigger_background_scan(struct hci_dev *hdev)
 	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
 		    &enable_cp);
 
-	err = hci_req_run(&req, start_background_scan_complete);
+	return hci_req_run(&req, start_background_scan_complete);
+}
+
+int hci_trigger_background_scan(struct hci_dev *hdev)
+{
+	int err;
+
+	BT_DBG("%s", hdev->name);
+
+	/* If we already have triggers, there is no need to send HCI command
+	 * to start the background scanning.
+	 */
+	if (atomic_read(&hdev->background_scan_cnt) > 0)
+		goto done;
+
+	err = start_background_scan(hdev);
 	if (err)
 		return err;
 
