@@ -4017,6 +4017,12 @@ int hci_trigger_background_scan(struct hci_dev *hdev)
 	if (atomic_read(&hdev->background_scan_cnt) > 0)
 		goto out;
 
+	/* If discovery is running, we should not start the background
+	 * scanning. It will be started once the discovery procedure finishes.
+	 */
+	if (hdev->discovery.state == DISCOVERY_FINDING)
+		goto out;
+
 	err = start_background_scan(hdev);
 	if (err)
 		return err;
@@ -4041,6 +4047,10 @@ int hci_untrigger_background_scan(struct hci_dev *hdev)
 
 	/* If we have more triggers, we should keep scanning. */
 	if (atomic_read(&hdev->background_scan_cnt) > 1)
+		goto out;
+
+	/* If device discovery is running, don't stop scanning. */
+	if (hdev->discovery.state == DISCOVERY_FINDING)
 		goto out;
 
 	hci_req_init(&req, hdev);
