@@ -3662,6 +3662,12 @@ static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 	BT_ERR("HCI request failed to initiate LE connection: status 0x%2.2x",
 	       status);
 
+	/* Check the background scanning since it may have been temporarily
+	 * disabled if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_check_background_scan(hdev);
+
 	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
 	if (!conn)
 		return;
@@ -3676,12 +3682,31 @@ static void initiate_le_connection_complete(struct hci_dev *hdev, u8 status)
 	hci_dev_unlock(hdev);
 }
 
+/* Check if controller supports scanning and initiating states combination */
+static bool is_state_combination_supported(struct hci_dev *hdev)
+{
+        return (hdev->le_states[2] & BIT(6)) ? true : false;
+}
+
 int hci_initiate_le_connection(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 {
 	struct hci_cp_le_create_conn cp;
 	struct hci_request req;
 
 	hci_req_init(&req, hdev);
+
+	/* If controller is scanning but it doesn't support initiating and
+	 * scanning states combination, we stop scanning.
+	 */
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    !is_state_combination_supported(hdev)) {
+		struct hci_cp_le_set_scan_enable enable_cp;
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+	}
 
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = __constant_cpu_to_le16(0x0060);
@@ -3780,6 +3805,24 @@ int hci_untrigger_background_scan(struct hci_dev *hdev)
 out:
 	atomic_dec(&hdev->background_scan_cnt);
 	return 0;
+}
+
+/* This function checks if there is background scan triggers and starts
+ * scanning.
+ */
+void hci_check_background_scan(struct hci_dev *hdev)
+{
+	int err;
+
+	if (atomic_read(&hdev->background_scan_cnt) == 0)
+		return;
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return;
+
+	err = start_background_scan(hdev);
+	if (err)
+		BT_ERR("Failed to start background scanning: err %d", err);
 }
 
 static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)

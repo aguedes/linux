@@ -3453,6 +3453,12 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
+	/* Check the background scanning since it may have been temporarily
+	 * disabled if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_check_background_scan(hdev);
+
 	if (ev->status) {
 		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
 		if (!conn)

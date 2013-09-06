@@ -1231,6 +1231,7 @@ int hci_initiate_le_connection(struct hci_dev *hdev, bdaddr_t *addr, u8 type);
 
 int hci_trigger_background_scan(struct hci_dev *hdev);
 int hci_untrigger_background_scan(struct hci_dev *hdev);
+void hci_check_background_scan(struct hci_dev *hdev);
 
 bool hci_is_auto_connect_address(struct hci_dev *hdev, bdaddr_t *addr,
 				 u8 type);
