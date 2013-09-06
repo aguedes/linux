@@ -586,6 +586,11 @@ static int hci_create_le_conn(struct hci_conn *conn)
 		enable_cp.enable = LE_SCAN_DISABLE;
 		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
 			    &enable_cp);
+
+		if (hdev->discovery.state == DISCOVERY_FINDING) {
+			cancel_delayed_work(&hdev->le_scan_disable);
+			hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+		}
 	}
 
 	memset(&cp, 0, sizeof(cp));
