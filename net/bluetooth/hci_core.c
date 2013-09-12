@@ -1748,6 +1748,8 @@ static void hci_power_on(struct work_struct *work)
 
 	if (test_and_clear_bit(HCI_SETUP, &hdev->dev_flags))
 		mgmt_index_added(hdev);
+
+	hci_check_background_scan(hdev);
 }
 
 static void hci_power_off(struct work_struct *work)
