@@ -856,6 +856,10 @@ void hci_conn_hash_flush(struct hci_dev *hdev)
 	BT_DBG("hdev %s", hdev->name);
 
 	list_for_each_entry_safe(c, n, &h->list, list) {
+		if (c->state == BT_CONNECTED &&
+		    hci_is_auto_connect_address(hdev, &c->dst, c->dst_type))
+			hci_trigger_background_scan(hdev);
+
 		c->state = BT_CLOSED;
 
 		hci_proto_disconn_cfm(c, HCI_ERROR_LOCAL_HOST_TERM);
