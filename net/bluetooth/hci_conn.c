@@ -964,6 +964,31 @@ timer:
 			  jiffies + msecs_to_jiffies(hdev->idle_timeout));
 }
 
+static void le_conn_drop_fixup(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_conn_param *param;
+	int err;
+
+	param = hci_find_conn_param(hdev, &conn->dst, conn->dst_type);
+	if (!param)
+		return;
+
+	if (param->auto_connect != BT_AUTO_CONN_ALWAYS)
+		goto done;
+
+	err = hci_trigger_background_scan(hdev);
+	if (err) {
+		BT_ERR("Failed to trigger background scanning: %d", err);
+		goto done;
+	}
+
+	param->bg_scan_triggered = true;
+
+done:
+	hci_conn_param_put(param);
+}
+
 /* Drop all connection on the device */
 void hci_conn_hash_flush(struct hci_dev *hdev)
 {
@@ -973,6 +998,16 @@ void hci_conn_hash_flush(struct hci_dev *hdev)
 	BT_DBG("hdev %s", hdev->name);
 
 	list_for_each_entry_safe(c, n, &h->list, list) {
+		/* If this is a LE connection in connected state we should do
+		 * some fixup before dropping this connection. Since no
+		 * Disconnection Complete Event will be sent to the host, we
+		 * have to trigger the background scan in case this is a
+		 * BT_AUTO_CONN_ALWAYS device. This is handled by the le_conn_
+		 * drop_fixup() helper.
+		 */
+		if (c->type == LE_LINK && c->state == BT_CONNECTED)
+			le_conn_drop_fixup(c);
+
 		c->state = BT_CLOSED;
 
 		hci_proto_disconn_cfm(c, HCI_ERROR_LOCAL_HOST_TERM);
