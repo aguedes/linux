@@ -1234,5 +1234,8 @@ int hci_untrigger_background_scan(struct hci_dev *hdev);
 
 bool hci_is_auto_connect_address(struct hci_dev *hdev, bdaddr_t *addr,
 				 u8 type);
+int __hci_set_auto_connect(struct hci_dev *hdev, bdaddr_t *addr, u8 type);
+void __hci_reset_auto_connect(struct hci_dev *hdev);
+void hci_auto_connect_check(struct hci_dev *hdev, bdaddr_t *addr, u8 type);
 
 #endif /* __HCI_CORE_H */

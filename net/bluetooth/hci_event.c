@@ -1796,6 +1796,17 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (ev->status == 0) {
 		if (conn->type == ACL_LINK && conn->flush_key)
 			hci_remove_link_key(hdev, &conn->dst);
+
+		if (conn->type == LE_LINK && hci_is_auto_connect_address(hdev,
+		    &conn->dst,	conn->dst_type)) {
+			int err;
+
+			err = hci_trigger_background_scan(hdev);
+			if (err)
+				BT_ERR("Failed to trigger background "
+				       "scanning: %d", err);
+		}
+
 		hci_proto_disconn_cfm(conn, ev->reason);
 		hci_conn_del(conn);
 	}
@@ -3480,6 +3491,17 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 			conn->link_mode |= HCI_LM_MASTER;
 			conn->sec_level = BT_SECURITY_LOW;
 			conn->dst_type = ev->bdaddr_type;
+			break;
+		}
+
+		if (hci_is_auto_connect_address(hdev, &ev->bdaddr,
+		    ev->bdaddr_type)) {
+			int err;
+
+			err = hci_untrigger_background_scan(hdev);
+			if (err)
+				BT_ERR("Failed to untrigger background "
+				       "scanning: %d", err);
 		}
 		break;
 
@@ -3522,6 +3544,8 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
+
+		hci_auto_connect_check(hdev, &ev->bdaddr, ev->bdaddr_type);
 
 		rssi = ev->data[ev->length];
 		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,

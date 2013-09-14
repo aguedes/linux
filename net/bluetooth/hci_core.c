@@ -3775,3 +3775,125 @@ out:
 	atomic_dec(&hdev->background_scan_cnt);
 	return 0;
 }
+
+static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
+{
+	struct hci_conn *conn;
+
+	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
+
+	if (!conn)
+		return false;
+
+	if (conn->dst_type != type)
+		return false;
+
+	if (conn->state != BT_CONNECTED)
+		return false;
+
+	return true;
+}
+
+/*
+ * Set a device as auto connect.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+int __hci_set_auto_connect(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
+{
+	int err;
+	u8 hci_type = bdaddr_to_le(type);
+
+	if (type == BDADDR_BREDR)
+		return -EINVAL;
+
+	err = __add_auto_connect_address(hdev, addr, hci_type);
+	if (err)
+		return err;
+
+	if (!is_connected(hdev, addr, hci_type)) {
+		err = hci_trigger_background_scan(hdev);
+		if (err) {
+			BT_ERR("Failed to trigger background scan: %d", err);
+			return err;
+		}
+	}
+
+	BT_DBG("%s Address %pMR type %u set as auto connect successfully",
+	       hdev->name, addr, hci_type);
+
+	return 0;
+}
+
+/*
+ * Reset auto connection list. This function deletes all entries in
+ * hdev->auto_connect list and removes all background scan triggers.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+void __hci_reset_auto_connect(struct hci_dev *hdev)
+{
+	struct auto_connect_entry *entry, *tmp;
+
+	list_for_each_entry_safe(entry, tmp, &hdev->auto_connect, list) {
+		/* If we are not connected to the given device, we have to
+		 * untrigger the background scan.
+		 */
+		if (!is_connected(hdev, &entry->addr, entry->type)) {
+			int err;
+
+			err = hci_untrigger_background_scan(hdev);
+			if (err)
+				BT_ERR("Failed to untrigger background "
+				       "scanning: %d", err);
+		}
+
+		__delete_auto_connect_address(entry);
+	}
+
+	BT_DBG("%s Auto connect list reset", hdev->name);
+}
+
+static u8 le_to_bdaddr(u8 type)
+{
+	switch (type) {
+	case ADDR_LE_DEV_PUBLIC:
+		return BDADDR_LE_PUBLIC;
+
+	default:
+		/* Fallback to LE Random address type */
+		return BDADDR_LE_RANDOM;
+	}
+}
+
+void hci_auto_connect_check(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
+{
+	struct hci_conn *conn;
+
+	/* If there is no background scan trigger, it means the auto connection
+	 * procedure is not runninng.
+	 */
+	if (atomic_read(&hdev->background_scan_cnt) == 0)
+		return;
+
+	if (!hci_is_auto_connect_address(hdev, addr, type))
+		return;
+
+	conn = hci_connect(hdev, LE_LINK, addr, le_to_bdaddr(type),
+			   BT_SECURITY_LOW, HCI_AT_NO_BONDING);
+	if (IS_ERR(conn)) {
+		switch(PTR_ERR(conn)) {
+		case -EBUSY:
+			/* When hci_connect() returns EBUSY it means there is
+			 * already an LE connection attempt going on. Since the
+			 * controller supports only one connection attempt at
+			 * the time, we simply return.
+			 */
+			return;
+		default:
+			BT_ERR("Failed to auto connect: err %ld",
+			       PTR_ERR(conn));
+			return;
+		}
+	}
+}
