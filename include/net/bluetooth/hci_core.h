@@ -378,6 +378,8 @@ struct hci_chan {
 };
 
 struct hci_conn_params {
+	struct kref refcount;
+
 	struct list_head list;
 
 	bdaddr_t addr;
@@ -767,6 +769,9 @@ int hci_add_conn_params(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 			u16 conn_interval_max);
 void hci_remove_conn_params(struct hci_dev *hdev, bdaddr_t *addr,
 			    u8 addr_type);
+struct hci_conn_params *hci_find_conn_params(struct hci_dev *hdev,
+					   bdaddr_t *addr, u8 addr_type);
+void hci_conn_params_put(struct hci_conn_params *params);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 
