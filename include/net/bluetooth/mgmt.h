@@ -362,6 +362,15 @@ struct mgmt_cp_set_static_address {
 } __packed;
 #define MGMT_SET_STATIC_ADDRESS_SIZE	6
 
+#define MGMT_OP_ADD_CONN_PARAM		0x002C
+struct mgmt_cp_add_conn_param {
+	struct mgmt_addr_info addr;
+	__u8 auto_connect;
+	__le16 min_conn_interval;
+	__le16 max_conn_interval;
+} __packed;
+#define MGMT_ADD_CONN_PARAM_SIZE	(MGMT_ADDR_INFO_SIZE + 5)
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;
