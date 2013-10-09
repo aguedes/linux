@@ -2773,6 +2773,141 @@ int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type)
 	return mgmt_device_unblocked(hdev, bdaddr, type);
 }
 
+static struct hci_conn_params *conn_params_get(struct hci_dev *hdev,
+					       bdaddr_t *addr, u8 addr_type)
+{
+	struct hci_conn_params *params;
+
+	rcu_read_lock();
+
+	list_for_each_entry(params, &hdev->le_conn_params, list) {
+		if (bacmp(&params->addr, addr) == 0 &&
+		    params->addr_type == addr_type) {
+			rcu_read_unlock();
+			return params;
+		}
+	}
+
+	rcu_read_unlock();
+	return NULL;
+}
+
+static struct hci_conn_params *new_conn_params(bdaddr_t *addr, u8 addr_type,
+					       u8 auto_connect,
+					       u16 conn_min_interval,
+					       u16 conn_max_interval)
+{
+	struct hci_conn_params *params;
+
+	params = kzalloc(sizeof(*params), GFP_KERNEL);
+	if (!params)
+		return NULL;
+
+	bacpy(&params->addr, addr);
+	params->addr_type = addr_type;
+	params->auto_connect = auto_connect;
+	params->conn_min_interval = conn_min_interval;
+	params->conn_max_interval = conn_max_interval;
+
+	return params;
+}
+
+static void conn_params_update(struct hci_dev *hdev,
+			       struct hci_conn_params *old, u8 auto_connect,
+			       u16 conn_min_interval, u16 conn_max_interval)
+{
+	struct hci_conn_params *new;
+
+	new = new_conn_params(&old->addr, old->addr_type, auto_connect,
+			      conn_min_interval, conn_max_interval);
+	if (!new) {
+		BT_ERR("Out of memory");
+		return;
+	}
+
+	hci_dev_lock(hdev);
+	list_replace_rcu(&old->list, &new->list);
+	hci_dev_unlock(hdev);
+
+	synchronize_rcu();
+
+	kfree(old);
+
+	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
+	       "conn_max_interval 0x%.4x", &old->addr, old->addr_type,
+	       auto_connect, conn_min_interval, conn_max_interval);
+}
+
+void hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+			 u8 auto_connect, u16 conn_min_interval,
+			 u16 conn_max_interval)
+{
+	struct hci_conn_params *params;
+
+	params = conn_params_get(hdev, addr, addr_type);
+	if (params) {
+		conn_params_update(hdev, params, auto_connect,
+				   conn_min_interval, conn_max_interval);
+		return;
+	}
+
+	params = new_conn_params(addr, addr_type, auto_connect,
+				 conn_min_interval, conn_max_interval);
+	if (!params) {
+		BT_ERR("Out of memory");
+		return;
+	}
+
+	hci_dev_lock(hdev);
+	list_add_rcu(&params->list, &hdev->le_conn_params);
+	hci_dev_unlock(hdev);
+
+	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
+	       "conn_max_interval 0x%.4x", addr, addr_type, auto_connect,
+	       conn_min_interval, conn_max_interval);
+}
+
+/* Remove from hdev->le_conn_params and free hci_conn_params.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static void delete_conn_params(struct hci_conn_params *params)
+{
+	BT_DBG("addr %pMR (type %u)", &params->addr, params->addr_type);
+
+	list_del_rcu(&params->list);
+	synchronize_rcu();
+
+	kfree(params);
+}
+
+void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
+{
+	struct hci_conn_params *params;
+
+	params = conn_params_get(hdev, addr, addr_type);
+	if (!params)
+		return;
+
+	hci_dev_lock(hdev);
+	delete_conn_params(params);
+	hci_dev_unlock(hdev);
+}
+
+/* Remove all elements from hdev->le_conn_params list.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+void hci_conn_params_clear(struct hci_dev *hdev)
+{
+	struct hci_conn_params *params, *tmp;
+
+	list_for_each_entry_safe(params, tmp, &hdev->le_conn_params, list)
+		delete_conn_params(params);
+
+	BT_DBG("All LE connection parameters were removed");
+}
+
 static void inquiry_complete(struct hci_dev *hdev, u8 status)
 {
 	if (status) {
@@ -2883,6 +3018,7 @@ struct hci_dev *hci_alloc_dev(void)
 	INIT_LIST_HEAD(&hdev->link_keys);
 	INIT_LIST_HEAD(&hdev->long_term_keys);
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
+	INIT_LIST_HEAD(&hdev->le_conn_params);
 	INIT_LIST_HEAD(&hdev->conn_hash.list);
 
 	INIT_WORK(&hdev->rx_work, hci_rx_work);
@@ -3068,6 +3204,7 @@ void hci_unregister_dev(struct hci_dev *hdev)
 	hci_link_keys_clear(hdev);
 	hci_smp_ltks_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
+	hci_conn_params_clear(hdev);
 	hci_dev_unlock(hdev);
 
 	hci_dev_put(hdev);
