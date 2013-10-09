@@ -80,6 +80,7 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_STATIC_ADDRESS,
 	MGMT_OP_SET_SCAN_PARAMS,
 	MGMT_OP_ADD_CONN_PARAM,
+	MGMT_OP_REMOVE_CONN_PARAM,
 };
 
 static const u16 mgmt_events[] = {
@@ -3889,6 +3890,33 @@ static int add_conn_param(struct sock *sk, struct hci_dev *hdev, void *cp_data,
 			    NULL, 0);
 }
 
+static int remove_conn_param(struct sock *sk, struct hci_dev *hdev,
+			     void *cp_data, u16 len)
+{
+	struct mgmt_cp_remove_conn_param *cp = cp_data;
+	u8 status;
+	u8 addr_type;
+
+	if (cp->addr.type == BDADDR_BREDR)
+		return cmd_complete(sk, hdev->id, MGMT_OP_REMOVE_CONN_PARAM,
+				    MGMT_STATUS_NOT_SUPPORTED, NULL, 0);
+
+	status = mgmt_le_support(hdev);
+	if (status)
+		return cmd_complete(sk, hdev->id, MGMT_OP_REMOVE_CONN_PARAM,
+				    status, NULL, 0);
+
+	if (cp->addr.type == BDADDR_LE_PUBLIC)
+		addr_type = ADDR_LE_DEV_PUBLIC;
+	else
+		addr_type = ADDR_LE_DEV_RANDOM;
+
+	hci_remove_conn_param(hdev, &cp->addr.bdaddr, addr_type);
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_REMOVE_CONN_PARAM,
+			    MGMT_STATUS_SUCCESS, NULL, 0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -3941,6 +3969,7 @@ static const struct mgmt_handler {
 	{ set_static_address,     false, MGMT_SET_STATIC_ADDRESS_SIZE },
 	{ set_scan_params,        false, MGMT_SET_SCAN_PARAMS_SIZE },
 	{ add_conn_param,         false, MGMT_ADD_CONN_PARAM_SIZE },
+	{ remove_conn_param,      false, MGMT_REMOVE_CONN_PARAM_SIZE },
 };
 
 
