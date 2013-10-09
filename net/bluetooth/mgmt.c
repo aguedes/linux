@@ -79,6 +79,7 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_BREDR,
 	MGMT_OP_SET_STATIC_ADDRESS,
 	MGMT_OP_SET_SCAN_PARAMS,
+	MGMT_OP_ADD_CONN_PARAM,
 };
 
 static const u16 mgmt_events[] = {
@@ -4025,6 +4026,39 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 	return err;
 }
 
+static int add_conn_param(struct sock *sk, struct hci_dev *hdev, void *cp_data,
+			  u16 len)
+{
+	struct mgmt_cp_add_conn_param *cp = cp_data;
+	u8 status;
+	u8 addr_type;
+
+	if (cp->addr.type == BDADDR_BREDR)
+		return cmd_complete(sk, hdev->id, MGMT_OP_ADD_CONN_PARAM,
+				    MGMT_STATUS_NOT_SUPPORTED, NULL, 0);
+
+	status = mgmt_le_support(hdev);
+	if (status)
+		return cmd_complete(sk, hdev->id, MGMT_OP_ADD_CONN_PARAM,
+				    status, NULL, 0);
+
+	if (cp->addr.type == BDADDR_LE_PUBLIC)
+		addr_type = ADDR_LE_DEV_PUBLIC;
+	else
+		addr_type = ADDR_LE_DEV_RANDOM;
+
+	if (hci_add_conn_param(hdev, &cp->addr.bdaddr, addr_type,
+			       cp->auto_connect,
+			       __le16_to_cpu(cp->min_conn_interval),
+			       __le16_to_cpu(cp->max_conn_interval)))
+		status = MGMT_STATUS_FAILED;
+	else
+		status = MGMT_STATUS_SUCCESS;
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_ADD_CONN_PARAM, status,
+			    NULL, 0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -4076,6 +4110,7 @@ static const struct mgmt_handler {
 	{ set_bredr,              false, MGMT_SETTING_SIZE },
 	{ set_static_address,     false, MGMT_SET_STATIC_ADDRESS_SIZE },
 	{ set_scan_params,        false, MGMT_SET_SCAN_PARAMS_SIZE },
+	{ add_conn_param,         false, MGMT_ADD_CONN_PARAM_SIZE },
 };
 
 

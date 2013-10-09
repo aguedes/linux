@@ -354,4 +354,10 @@ void sco_exit(void);
 
 void bt_sock_reclassify_lock(struct sock *sk, int proto);
 
+enum {
+	BT_AUTO_CONN_DISABLED,
+	BT_AUTO_CONN_ALWAYS,
+	BT_AUTO_CONN_LINK_LOSS,
+};
+
 #endif /* __BLUETOOTH_H */
