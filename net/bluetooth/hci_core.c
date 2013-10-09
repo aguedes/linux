@@ -2773,8 +2773,14 @@ int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type)
 	return mgmt_device_unblocked(hdev, bdaddr, type);
 }
 
-static struct hci_conn_params *conn_params_get(struct hci_dev *hdev,
-					       bdaddr_t *addr, u8 addr_type)
+/* Lookup hci_conn_params in hdev->conn_params list.
+ *
+ * Return a reference to hci_conn_params object with refcount incremented.
+ * The caller should drop its reference by using hci_conn_params_put(). If
+ * hci_conn_params is not found, NULL is returned.
+ */
+struct hci_conn_params *hci_conn_params_get(struct hci_dev *hdev,
+					    bdaddr_t *addr, u8 addr_type)
 {
 	struct hci_conn_params *params;
 
@@ -2783,6 +2789,8 @@ static struct hci_conn_params *conn_params_get(struct hci_dev *hdev,
 	list_for_each_entry(params, &hdev->le_conn_params, list) {
 		if (bacmp(&params->addr, addr) == 0 &&
 		    params->addr_type == addr_type) {
+			kref_get(&params->refcount);
+
 			rcu_read_unlock();
 			return params;
 		}
@@ -2790,6 +2798,20 @@ static struct hci_conn_params *conn_params_get(struct hci_dev *hdev,
 
 	rcu_read_unlock();
 	return NULL;
+}
+
+static void release_hci_conn_params(struct kref *kref)
+{
+	struct hci_conn_params *params = container_of(kref,
+						    struct hci_conn_params,
+						    refcount);
+
+	kfree(params);
+}
+
+void hci_conn_params_put(struct hci_conn_params *params)
+{
+	kref_put(&params->refcount, release_hci_conn_params);
 }
 
 static struct hci_conn_params *new_conn_params(bdaddr_t *addr, u8 addr_type,
@@ -2802,6 +2824,8 @@ static struct hci_conn_params *new_conn_params(bdaddr_t *addr, u8 addr_type,
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
 		return NULL;
+
+	kref_init(&params->refcount);
 
 	bacpy(&params->addr, addr);
 	params->addr_type = addr_type;
@@ -2831,7 +2855,7 @@ static void conn_params_update(struct hci_dev *hdev,
 
 	synchronize_rcu();
 
-	kfree(old);
+	hci_conn_params_put(old);
 
 	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
 	       "conn_max_interval 0x%.4x", &old->addr, old->addr_type,
@@ -2844,10 +2868,11 @@ void hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 {
 	struct hci_conn_params *params;
 
-	params = conn_params_get(hdev, addr, addr_type);
+	params = hci_conn_params_get(hdev, addr, addr_type);
 	if (params) {
 		conn_params_update(hdev, params, auto_connect,
 				   conn_min_interval, conn_max_interval);
+		hci_conn_params_put(params);
 		return;
 	}
 
@@ -2878,20 +2903,22 @@ static void delete_conn_params(struct hci_conn_params *params)
 	list_del_rcu(&params->list);
 	synchronize_rcu();
 
-	kfree(params);
+	hci_conn_params_put(params);
 }
 
 void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
 {
 	struct hci_conn_params *params;
 
-	params = conn_params_get(hdev, addr, addr_type);
+	params = hci_conn_params_get(hdev, addr, addr_type);
 	if (!params)
 		return;
 
 	hci_dev_lock(hdev);
 	delete_conn_params(params);
 	hci_dev_unlock(hdev);
+
+	hci_conn_params_put(params);
 }
 
 /* Remove all elements from hdev->le_conn_params list.
