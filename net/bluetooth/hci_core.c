@@ -2771,8 +2771,34 @@ int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type)
 	return mgmt_device_unblocked(hdev, bdaddr, type);
 }
 
-static struct hci_conn_params *find_conn_params(struct hci_dev *hdev,
-						bdaddr_t *addr, u8 addr_type)
+static void hci_conn_params_get(struct hci_conn_params *params)
+{
+	kref_get(&params->refcount);
+}
+
+static void release_hci_conn_params(struct kref *kref)
+{
+	struct hci_conn_params *params = container_of(kref,
+						    struct hci_conn_params,
+						    refcount);
+
+	kfree(params);
+}
+
+void hci_conn_params_put(struct hci_conn_params *params)
+{
+	kref_put(&params->refcount, release_hci_conn_params);
+}
+
+/*
+ * Lookup hci_conn_params in hdev->conn_params list.
+ *
+ * Return a reference to hci_conn_params object with refcount incremented.
+ * The caller should drop its reference by using hci_conn_params_put(). If
+ * hci_conn_params is not found, NULL is returned.
+ */
+struct hci_conn_params *hci_find_conn_params(struct hci_dev *hdev,
+					     bdaddr_t *addr, u8 addr_type)
 {
 	struct hci_conn_params *params;
 
@@ -2783,6 +2809,8 @@ static struct hci_conn_params *find_conn_params(struct hci_dev *hdev,
 			continue;
 		if (params->addr_type != addr_type)
 			continue;
+
+		hci_conn_params_get(params);
 
 		rcu_read_unlock();
 		return params;
@@ -2798,13 +2826,17 @@ int hci_add_conn_params(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 {
 	struct hci_conn_params *params;
 
-	params = find_conn_params(hdev, addr, addr_type);
-	if (params)
+	params = hci_find_conn_params(hdev, addr, addr_type);
+	if (params) {
+		hci_conn_params_put(params);
 		return -EEXIST;
+	}
 
 	params = kmalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
 		return -ENOMEM;
+
+	kref_init(&params->refcount);
 
 	bacpy(&params->addr, addr);
 	params->addr_type = addr_type;
@@ -2828,20 +2860,22 @@ static void __remove_conn_params(struct hci_conn_params *params)
 	list_del_rcu(&params->list);
 	synchronize_rcu();
 
-	kfree(params);
+	hci_conn_params_put(params);
 }
 
 void hci_remove_conn_params(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
 {
 	struct hci_conn_params *params;
 
-	params = find_conn_params(hdev, addr, addr_type);
+	params = hci_find_conn_params(hdev, addr, addr_type);
 	if (!params)
 		return;
 
 	hci_dev_lock(hdev);
 	__remove_conn_params(params);
 	hci_dev_unlock(hdev);
+
+	hci_conn_params_put(params);
 }
 
 /*
