@@ -2151,6 +2151,92 @@ int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type)
 	return mgmt_device_unblocked(hdev, bdaddr, type);
 }
 
+struct hci_conn_param *find_conn_param(struct hci_dev *hdev,
+				       bdaddr_t *addr, u8 addr_type)
+{
+	struct hci_conn_param *param;
+
+	rcu_read_lock();
+
+	list_for_each_entry(param, &hdev->conn_param, list) {
+		if (bacmp(&param->addr, addr))
+			continue;
+		if (param->addr_type != addr_type)
+			continue;
+
+		rcu_read_unlock();
+		return param;
+	}
+
+	rcu_read_unlock();
+	return NULL;
+}
+
+int hci_add_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+		       u8 auto_connect, u16 min_conn_interval,
+		       u16 max_conn_interval)
+{
+	struct hci_conn_param *param;
+
+	param = find_conn_param(hdev, addr, addr_type);
+	if (param)
+		return -EEXIST;
+
+	param = kmalloc(sizeof(*param), GFP_KERNEL);
+	if (!param)
+		return -ENOMEM;
+
+	bacpy(&param->addr, addr);
+	param->addr_type = addr_type;
+	param->auto_connect = auto_connect;
+	param->min_conn_interval = min_conn_interval;
+	param->max_conn_interval = max_conn_interval;
+
+	hci_dev_lock(hdev);
+	list_add_rcu(&param->list, &hdev->conn_param);
+	hci_dev_unlock(hdev);
+	return 0;
+}
+
+/*
+ * Remove from hdev->conn_param and free hci_conn_param.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static void __remove_conn_param(struct hci_conn_param *param)
+{
+	list_del_rcu(&param->list);
+	synchronize_rcu();
+
+	kfree(param);
+}
+
+void hci_remove_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
+{
+	struct hci_conn_param *param;
+
+	param = find_conn_param(hdev, addr, addr_type);
+	if (!param)
+		return;
+
+	hci_dev_lock(hdev);
+	__remove_conn_param(param);
+	hci_dev_unlock(hdev);
+}
+
+/*
+ * Remove all elements from hdev->conn_param list.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+static void __clear_conn_param(struct hci_dev *hdev)
+{
+	struct hci_conn_param *param, *tmp;
+
+	list_for_each_entry_safe(param, tmp, &hdev->conn_param, list)
+		__remove_conn_param(param);
+}
+
 static void inquiry_complete(struct hci_dev *hdev, u8 status)
 {
 	if (status) {
@@ -2259,6 +2345,7 @@ struct hci_dev *hci_alloc_dev(void)
 	INIT_LIST_HEAD(&hdev->link_keys);
 	INIT_LIST_HEAD(&hdev->long_term_keys);
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
+	INIT_LIST_HEAD(&hdev->conn_param);
 	INIT_LIST_HEAD(&hdev->conn_hash.list);
 
 	INIT_WORK(&hdev->rx_work, hci_rx_work);
@@ -2437,6 +2524,7 @@ void hci_unregister_dev(struct hci_dev *hdev)
 	hci_link_keys_clear(hdev);
 	hci_smp_ltks_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
+	__clear_conn_param(hdev);
 	hci_dev_unlock(hdev);
 
 	hci_dev_put(hdev);
