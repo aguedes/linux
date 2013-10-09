@@ -263,6 +263,8 @@ struct hci_dev {
 
 	struct list_head	remote_oob_data;
 
+	struct list_head	conn_param;
+
 	struct hci_dev_stats	stat;
 
 	atomic_t		promisc;
@@ -360,6 +362,22 @@ struct hci_chan {
 	struct sk_buff_head data_q;
 	unsigned int	sent;
 	__u8		state;
+};
+
+struct hci_conn_param {
+	struct list_head list;
+
+	bdaddr_t addr;
+	u8 addr_type;
+
+	enum {
+		HCI_AUTO_CONN_DISABLED,
+		HCI_AUTO_CONN_ALWAYS,
+		HCI_AUTO_CONN_LINK_LOSS,
+	} auto_connect;
+
+	u16 min_conn_interval;
+	u16 max_conn_interval;
 };
 
 extern struct list_head hci_dev_list;
@@ -730,6 +748,11 @@ struct bdaddr_list *hci_blacklist_lookup(struct hci_dev *hdev,
 int hci_blacklist_clear(struct hci_dev *hdev);
 int hci_blacklist_add(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
 int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
+
+int hci_add_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+		       u8 auto_connect, u16 min_conn_interval,
+		       u16 max_conn_interval);
+void hci_remove_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 
