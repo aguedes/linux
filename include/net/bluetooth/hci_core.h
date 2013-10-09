@@ -376,11 +376,7 @@ struct hci_conn_param {
 	bdaddr_t addr;
 	u8 addr_type;
 
-	enum {
-		HCI_AUTO_CONN_DISABLED,
-		HCI_AUTO_CONN_ALWAYS,
-		HCI_AUTO_CONN_LINK_LOSS,
-	} auto_connect;
+	u8 auto_connect;
 
 	u16 min_conn_interval;
 	u16 max_conn_interval;
