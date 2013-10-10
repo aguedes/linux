@@ -548,6 +548,7 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	struct hci_dev *hdev = conn->hdev;
 	struct hci_cp_le_create_conn cp;
 	struct hci_request req;
+	struct hci_conn_param *param;
 	int err;
 
 	hci_req_init(&req, hdev);
@@ -558,11 +559,18 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	bacpy(&cp.peer_addr, &conn->dst);
 	cp.peer_addr_type = conn->dst_type;
 	cp.own_address_type = conn->src_type;
-	cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
-	cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
 	cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
 	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
 	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
+	param = hci_find_conn_param(hdev, &conn->dst, conn->dst_type);
+	if (param) {
+		cp.conn_interval_min = cpu_to_le16(param->min_conn_interval);
+		cp.conn_interval_max = cpu_to_le16(param->max_conn_interval);
+		hci_conn_param_put(param);
+	} else {
+		cp.conn_interval_min = __constant_cpu_to_le16(0x0028);
+		cp.conn_interval_max = __constant_cpu_to_le16(0x0038);
+	}
 	hci_req_add(&req, HCI_OP_LE_CREATE_CONN, sizeof(cp), &cp);
 
 	err = hci_req_run(&req, create_le_conn_complete);
