@@ -1781,6 +1781,8 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_disconn_complete *ev = (void *) skb->data;
 	struct hci_conn *conn;
+	u8 type;
+	bool send_mgmt_event = false;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
@@ -1790,43 +1792,45 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!conn)
 		goto unlock;
 
-	if (ev->status == 0)
-		conn->state = BT_CLOSED;
-
 	if (test_and_clear_bit(HCI_CONN_MGMT_CONNECTED, &conn->flags) &&
-	    (conn->type == ACL_LINK || conn->type == LE_LINK)) {
-		if (ev->status) {
+	    (conn->type == ACL_LINK || conn->type == LE_LINK))
+		send_mgmt_event = true;
+
+	if (ev->status) {
+		if (send_mgmt_event)
 			mgmt_disconnect_failed(hdev, &conn->dst, conn->type,
 					       conn->dst_type, ev->status);
-		} else {
-			u8 reason = hci_to_mgmt_reason(ev->reason);
-
-			mgmt_device_disconnected(hdev, &conn->dst, conn->type,
-						 conn->dst_type, reason);
-		}
+		return;
 	}
 
-	if (ev->status == 0) {
-		u8 type = conn->type;
+	conn->state = BT_CLOSED;
 
-		if (type == ACL_LINK && conn->flush_key)
-			hci_remove_link_key(hdev, &conn->dst);
-		hci_proto_disconn_cfm(conn, ev->reason);
-		hci_conn_del(conn);
+	if (send_mgmt_event) {
+		u8 reason = hci_to_mgmt_reason(ev->reason);
 
-		/* Re-enable advertising if necessary, since it might
-		 * have been disabled by the connection. From the
-		 * HCI_LE_Set_Advertise_Enable command description in
-		 * the core specification (v4.0):
-		 * "The Controller shall continue advertising until the Host
-		 * issues an LE_Set_Advertise_Enable command with
-		 * Advertising_Enable set to 0x00 (Advertising is disabled)
-		 * or until a connection is created or until the Advertising
-		 * is timed out due to Directed Advertising."
-		 */
-		if (type == LE_LINK)
-			mgmt_reenable_advertising(hdev);
+		mgmt_device_disconnected(hdev, &conn->dst, conn->type,
+					 conn->dst_type, reason);
 	}
+
+	if (conn->type == ACL_LINK && conn->flush_key)
+		hci_remove_link_key(hdev, &conn->dst);
+
+	type = conn->type;
+	hci_proto_disconn_cfm(conn, ev->reason);
+	hci_conn_del(conn);
+
+	/* Re-enable advertising if necessary, since it might
+	 * have been disabled by the connection. From the
+	 * HCI_LE_Set_Advertise_Enable command description in
+	 * the core specification (v4.0):
+	 * "The Controller shall continue advertising until the Host
+	 * issues an LE_Set_Advertise_Enable command with
+	 * Advertising_Enable set to 0x00 (Advertising is disabled)
+	 * or until a connection is created or until the Advertising
+	 * is timed out due to Directed Advertising."
+	 */
+	if (type == LE_LINK)
+		mgmt_reenable_advertising(hdev);
 
 unlock:
 	hci_dev_unlock(hdev);
