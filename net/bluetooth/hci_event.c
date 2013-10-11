@@ -1782,6 +1782,7 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	struct hci_ev_disconn_complete *ev = (void *) skb->data;
 	struct hci_conn *conn;
 	u8 type;
+	struct hci_conn_param *param;
 	bool send_mgmt_event = false;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
@@ -1814,6 +1815,22 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	if (conn->type == ACL_LINK && conn->flush_key)
 		hci_remove_link_key(hdev, &conn->dst);
+
+	/* Trigger the background scan if auto connection is required for this
+	 * device.
+	 */
+	param = hci_find_conn_param(hdev, &conn->dst, conn->dst_type);
+	if (param && param->auto_connect == BT_AUTO_CONN_ALWAYS) {
+		int err;
+
+		err = hci_trigger_background_scan(hdev);
+		if (err)
+			BT_ERR("Failed to trigger background "
+					"scanning: %d", err);
+
+		param->bg_scan_triggered = true;
+		hci_conn_param_put(param);
+	}
 
 	type = conn->type;
 	hci_proto_disconn_cfm(conn, ev->reason);
@@ -3493,6 +3510,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_le_conn_complete *ev = (void *) skb->data;
 	struct hci_conn *conn;
+	struct hci_conn_param *param;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
@@ -3546,6 +3564,22 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	hci_proto_connect_cfm(conn, ev->status);
 
+	/* Since the connection has been established successfully, we should
+	 * untrigger the background scan if this is an auto connect device.
+	 */
+	param = hci_find_conn_param(hdev, &ev->bdaddr, ev->bdaddr_type);
+	if (param && param->bg_scan_triggered) {
+		int err;
+
+		err = hci_untrigger_background_scan(hdev);
+		if (err)
+			BT_ERR("Failed to untrigger background "
+					"scanning: %d", err);
+
+		param->bg_scan_triggered = false;
+		hci_conn_param_put(param);
+	}
+
 unlock:
 	hci_dev_unlock(hdev);
 }
@@ -3558,6 +3592,8 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
+
+		hci_auto_connect_check(hdev, &ev->bdaddr, ev->bdaddr_type);
 
 		rssi = ev->data[ev->length];
 		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,

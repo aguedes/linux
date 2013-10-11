@@ -383,6 +383,7 @@ struct hci_conn_param {
 	u8 addr_type;
 
 	u8 auto_connect;
+	bool bg_scan_triggered;
 
 	u16 min_conn_interval;
 	u16 max_conn_interval;
@@ -764,6 +765,9 @@ int hci_add_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 		       u8 auto_connect, u16 min_conn_interval,
 		       u16 max_conn_interval);
 void hci_remove_conn_param(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
+
+void hci_auto_connect_check(struct hci_dev *hdev, bdaddr_t *addr,
+			    u8 addr_type);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 
