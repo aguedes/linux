@@ -1041,6 +1041,8 @@ static int set_discoverable(struct sock *sk, struct hci_dev *hdev, void *data,
 	}
 
 	if (!!cp->val == test_bit(HCI_DISCOVERABLE, &hdev->dev_flags)) {
+		u16 current_timeout = hdev->discov_timeout;
+
 		if (hdev->discov_timeout > 0) {
 			cancel_delayed_work(&hdev->discov_off);
 			hdev->discov_timeout = 0;
@@ -1052,8 +1054,16 @@ static int set_discoverable(struct sock *sk, struct hci_dev *hdev, void *data,
 				msecs_to_jiffies(hdev->discov_timeout * 1000));
 		}
 
-		err = send_settings_rsp(sk, MGMT_OP_SET_DISCOVERABLE, hdev);
-		goto failed;
+		/* A change in timeout means that the device is switching
+		 * from one discoverable mode to another. In that case
+		 * the IAC LAP needs to be changed.
+		 */
+		if ((current_timeout > 0 && timeout > 0) ||
+		    (current_timeout == 0 && timeout == 0)) {
+			err = send_settings_rsp(sk, MGMT_OP_SET_DISCOVERABLE,
+						hdev);
+			goto failed;
+		}
 	}
 
 	cmd = mgmt_pending_add(sk, MGMT_OP_SET_DISCOVERABLE, hdev, data, len);
@@ -1066,10 +1076,33 @@ static int set_discoverable(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	scan = SCAN_PAGE;
 
-	if (cp->val)
+	if (cp->val) {
+		struct hci_cp_write_current_iac_lap cp;
+
+		if (timeout > 0) {
+			/* Limited discoverable mode */
+			cp.num_iac = 2;
+			cp.iac_lap[0] = 0x00;	/* LIAC */
+			cp.iac_lap[1] = 0x8b;
+			cp.iac_lap[2] = 0x9e;
+			cp.iac_lap[3] = 0x33;	/* GIAC */
+			cp.iac_lap[4] = 0x8b;
+			cp.iac_lap[5] = 0x9e;
+		} else {
+			/* General discoverable mode */
+			cp.num_iac = 1;
+			cp.iac_lap[0] = 0x33;	/* GIAC */
+			cp.iac_lap[1] = 0x8b;
+			cp.iac_lap[2] = 0x9e;
+		}
+
+		hci_req_add(&req, HCI_OP_WRITE_CURRENT_IAC_LAP,
+			    (cp.num_iac * 3) + 1, &cp);
+
 		scan |= SCAN_INQUIRY;
-	else
+	} else {
 		cancel_delayed_work(&hdev->discov_off);
+	}
 
 	hci_req_add(&req, HCI_OP_WRITE_SCAN_ENABLE, 1, &scan);
 
