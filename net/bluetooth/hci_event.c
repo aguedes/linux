@@ -1830,15 +1830,25 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	 * device.
 	 */
 	param = hci_find_conn_param(hdev, &conn->dst, conn->dst_type);
-	if (param && param->auto_connect == BT_AUTO_CONN_ALWAYS) {
+	if (param) {
 		int err;
 
-		err = hci_trigger_background_scan(hdev);
-		if (err)
-			BT_ERR("Failed to trigger background "
-					"scanning: %d", err);
+		switch (param->auto_connect){
+		case BT_AUTO_CONN_LINK_LOSS:
+			if (ev->reason != HCI_ERROR_CONNECTION_TIMEOUT)
+				break;
+			/* Fall through */
 
-		param->bg_scan_triggered = true;
+		case BT_AUTO_CONN_ALWAYS:
+			err = hci_trigger_background_scan(hdev);
+			if (err)
+				BT_ERR("Failed to trigger background "
+						"scanning: %d", err);
+
+			param->bg_scan_triggered = true;
+			break;
+		}
+
 		hci_conn_param_put(param);
 	}
 
