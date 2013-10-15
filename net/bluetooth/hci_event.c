@@ -3584,6 +3584,12 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 unlock:
 	hci_dev_unlock(hdev);
+
+	/* Check the background scanning since it may have been temporarily
+	 * stopped if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_check_background_scan(hdev);
 }
 
 static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)

@@ -551,6 +551,18 @@ static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
 
 done:
 	hci_dev_unlock(hdev);
+
+	/* Check the background scanning since it may have been temporarily
+	 * stopped if the controller doesn't support scanning and initiate
+	 * state combination.
+	 */
+	hci_check_background_scan(hdev);
+}
+
+/* Check if controller supports scanning and initiating states combination */
+static bool is_state_combination_supported(struct hci_dev *hdev)
+{
+        return (hdev->le_states[2] & BIT(6)) ? true : false;
 }
 
 static int hci_create_le_conn(struct hci_conn *conn)
@@ -562,6 +574,19 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	int err;
 
 	hci_req_init(&req, hdev);
+
+	/* If controller is scanning but it doesn't support initiating and
+	 * scanning states combination, we stop scanning.
+	 */
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    !is_state_combination_supported(hdev)) {
+		struct hci_cp_le_set_scan_enable enable_cp;
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+	}
 
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = cpu_to_le16(hdev->le_scan_interval);

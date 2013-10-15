@@ -4052,3 +4052,21 @@ out:
 	atomic_dec(&hdev->background_scan_cnt);
 	return 0;
 }
+
+/* This function checks if there is background scan triggers and starts
+ * scanning.
+ */
+void hci_check_background_scan(struct hci_dev *hdev)
+{
+	int err;
+
+	if (atomic_read(&hdev->background_scan_cnt) == 0)
+		return;
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return;
+
+	err = start_background_scan(hdev);
+	if (err)
+		BT_ERR("Failed to start background scanning: err %d", err);
+}
