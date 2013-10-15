@@ -1201,5 +1201,6 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
 
 int hci_trigger_background_scan(struct hci_dev *hdev);
 int hci_untrigger_background_scan(struct hci_dev *hdev);
+void hci_check_background_scan(struct hci_dev *hdev);
 
 #endif /* __HCI_CORE_H */
