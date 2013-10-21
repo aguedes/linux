@@ -341,6 +341,9 @@ struct hci_conn {
 
 	unsigned int	sent;
 
+	__u16		conn_interval_min;
+	__u16		conn_interval_max;
+
 	struct sk_buff_head data_q;
 	struct list_head chan_list;
 
