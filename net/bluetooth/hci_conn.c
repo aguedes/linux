@@ -608,6 +608,7 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 {
 	struct hci_conn *conn;
 	int err;
+	struct hci_conn_params *params;
 
 	if (test_bit(HCI_ADVERTISING, &hdev->flags))
 		return ERR_PTR(-ENOTSUPP);
@@ -652,8 +653,16 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 	conn->sec_level = BT_SECURITY_LOW;
 	conn->pending_sec_level = sec_level;
 	conn->auth_type = auth_type;
-	conn->conn_interval_min = hdev->le_conn_min_interval;
-	conn->conn_interval_max = hdev->le_conn_max_interval;
+
+	params = hci_find_conn_params(hdev, &conn->dst, conn->dst_type);
+	if (params) {
+		conn->conn_interval_min = params->conn_interval_min;
+		conn->conn_interval_max = params->conn_interval_max;
+		hci_conn_params_put(params);
+	} else {
+		conn->conn_interval_min = hdev->le_conn_min_interval;
+		conn->conn_interval_max = hdev->le_conn_max_interval;
+	}
 
 	err = hci_create_le_conn(conn);
 	if (err)
