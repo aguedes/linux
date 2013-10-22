@@ -784,6 +784,8 @@ void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 
 bool hci_is_scan_and_conn_supported(struct hci_dev *hdev);
 
+void hci_check_background_scan(struct hci_dev *hdev);
+
 int hci_uuids_clear(struct hci_dev *hdev);
 
 int hci_link_keys_clear(struct hci_dev *hdev);

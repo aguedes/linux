@@ -544,6 +544,12 @@ static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
 
 done:
 	hci_dev_unlock(hdev);
+
+	/* Check the background scanning since it may have been temporarily
+	 * stopped if the controller doesn't support scanning and creating
+	 * connection at the same time.
+	 */
+	hci_check_background_scan(hdev);
 }
 
 static int hci_create_le_conn(struct hci_conn *conn)

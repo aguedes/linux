@@ -3547,8 +3547,49 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	hci_proto_connect_cfm(conn, ev->status);
 
+	__hci_remove_pending_auto_conn(hdev, &ev->bdaddr, ev->bdaddr_type);
+
 unlock:
 	hci_dev_unlock(hdev);
+
+	/* Check the background scanning since it may have been temporarily
+	 * stopped if the controller doesn't support scanning and creating
+	 * connection at the same time.
+	 */
+	hci_check_background_scan(hdev);
+}
+
+static void check_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				    u8 addr_type)
+{
+	struct hci_conn *conn;
+	u8 bdaddr_type;
+
+	if (!hci_has_pending_auto_conn(hdev, addr, addr_type))
+		return;
+
+	if (addr_type == ADDR_LE_DEV_PUBLIC)
+		bdaddr_type = BDADDR_LE_PUBLIC;
+	else
+		bdaddr_type = BDADDR_LE_RANDOM;
+
+	conn = hci_connect(hdev, LE_LINK, addr, bdaddr_type, BT_SECURITY_LOW,
+			   HCI_AT_NO_BONDING);
+	if (IS_ERR(conn)) {
+		switch(PTR_ERR(conn)) {
+		case -EBUSY:
+			/* When hci_connect() returns EBUSY it means there is
+			 * already an LE connection attempt going on. Since the
+			 * controller supports only one connection attempt at
+			 * the time, we simply return.
+			 */
+			return;
+		default:
+			BT_ERR("Failed to auto connect: err %ld",
+			       PTR_ERR(conn));
+			return;
+		}
+	}
 }
 
 static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -3559,6 +3600,8 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
+
+		check_pending_auto_conn(hdev, &ev->bdaddr, ev->bdaddr_type);
 
 		rssi = ev->data[ev->length];
 		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,

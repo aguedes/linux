@@ -2926,6 +2926,72 @@ bool hci_has_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 	return res;
 }
 
+static void start_background_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status)
+		BT_DBG("HCI request failed to start background scanning: "
+		       "status 0x%2.2x", status);
+}
+
+static int start_background_scan(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_param param_cp;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_request req;
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return 0;
+
+	BT_DBG("%s", hdev->name);
+
+	hci_req_init(&req, hdev);
+
+	memset(&param_cp, 0, sizeof(param_cp));
+	param_cp.type = LE_SCAN_PASSIVE;
+	param_cp.interval = cpu_to_le16(hdev->le_scan_interval);
+	param_cp.window = cpu_to_le16(hdev->le_scan_window);
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
+		    &param_cp);
+
+	memset(&enable_cp, 0, sizeof(enable_cp));
+	enable_cp.enable = LE_SCAN_ENABLE;
+	enable_cp.filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+		    &enable_cp);
+
+	return hci_req_run(&req, start_background_scan_complete);
+}
+
+static void stop_background_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status)
+		BT_DBG("HCI request failed to stop background scanning: "
+		       "status 0x%2.2x", status);
+}
+
+static int stop_background_scan(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_scan_enable cp;
+	struct hci_request req;
+
+	if (!test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return 0;
+
+	/* If device discovery is running, background scanning is stopped so
+	 * we return sucess.
+	 */
+	if (hdev->discovery.state == DISCOVERY_FINDING)
+		return 0;
+
+	hci_req_init(&req, hdev);
+
+	memset(&cp, 0, sizeof(cp));
+	cp.enable = LE_SCAN_DISABLE;
+	hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
+
+	return hci_req_run(&req, stop_background_scan_complete);
+}
+
 /* This function requires the caller holds hdev->lock */
 int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				u8 addr_type)
@@ -2942,6 +3008,19 @@ int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 
 	bacpy(&entry->bdaddr, addr);
 	entry->bdaddr_type = addr_type;
+
+	/* If there is no pending auto connection, the background scanning
+	 * is not runnning. So we should start it.
+	 */
+	if (list_empty(&hdev->pending_auto_conn)) {
+		int err;
+
+		err = start_background_scan(hdev);
+		if (err) {
+			kfree(entry);
+			return err;
+		}
+	}
 
 	list_add(&entry->list, &hdev->pending_auto_conn);
 
@@ -2960,6 +3039,14 @@ void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 
 	list_del(&entry->list);
 	kfree(entry);
+
+	if (list_empty(&hdev->pending_auto_conn)) {
+		int err;
+
+		err = stop_background_scan(hdev);
+		if (err)
+			BT_ERR("Failed to run HCI request: err %d", err);
+	}
 }
 
 /* This function requires the caller holds hdev->lock */
@@ -2971,6 +3058,34 @@ static void __clear_pending_auto_conn(struct hci_dev *hdev)
 		list_del(&entry->list);
 		kfree(entry);
 	}
+}
+
+/* This function starts the background scanning in case there is still
+ * pending auto connections.
+ */
+void hci_check_background_scan(struct hci_dev *hdev)
+{
+	struct hci_conn *conn;
+	int err;
+
+	if (list_empty(&hdev->pending_auto_conn))
+		return;
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+		return;
+
+	/* If the controller is connecting but it doesn't support scanning
+	 * scanning and connecting at the same time we don't start the
+	 * background scanning now. It will be started once the connection
+	 * is established.
+	 */
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (conn && !hci_is_scan_and_conn_supported(hdev))
+		return;
+
+	err = start_background_scan(hdev);
+	if (err)
+		BT_ERR("Failed to start background scanning: err %d", err);
 }
 
 static void inquiry_complete(struct hci_dev *hdev, u8 status)
