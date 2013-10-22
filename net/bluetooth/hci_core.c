@@ -3083,6 +3083,55 @@ void hci_check_background_scan(struct hci_dev *hdev)
 		BT_ERR("Failed to start background scanning: err %d", err);
 }
 
+/* This functions implements a fixup required by auto connection mechanism
+ * in order to work properly after a power on.
+ *
+ * When hdev is closed (e.g. Mgmt power off command, RFKILL or controller is
+ * reset), the ongoing active connections are silently dropped by the
+ * by the controller (no Disconnection Complete Event is sent to host). For
+ * that reason, the devices that require HCI_AUTO_CONN_ALWAYS are not add to
+ * hdev->pending_auto_conn list and they won't auto connect. So to fix this
+ * issue, after adapter is powered on, we should add all HCI_AUTO_CONN_ALWAYS
+ * address to hdev->pending_auto_conn list. Besides that, we always have to
+ * check if there are pending auto connections and start the background
+ * scanning if it is the case.
+ *
+ * This function requires the caller holds hdev->lock.
+ */
+void __hci_fixup_auto_conn(struct hci_dev *hdev)
+{
+	struct hci_conn_params *p;
+	struct bdaddr_list *entry;
+
+	list_for_each_entry(p, &hdev->conn_params, list) {
+		if (p->auto_connect != HCI_AUTO_CONN_ALWAYS)
+			continue;
+
+		entry = __find_pending_auto_conn(hdev, &p->addr, p->addr_type);
+		if (entry)
+			continue;
+
+		entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+		if (!entry) {
+			BT_ERR("Out of memory of auto connection");
+			return;
+		}
+
+		bacpy(&entry->bdaddr, &p->addr);
+		entry->bdaddr_type = p->addr_type;
+		list_add(&entry->list, &hdev->pending_auto_conn);
+	}
+
+	if (!list_empty(&hdev->pending_auto_conn)) {
+		int err;
+
+		err = start_background_scan(hdev);
+		if (err)
+			BT_ERR("Failed to start background scanning: err %d",
+			       err);
+	}
+}
+
 static void inquiry_complete(struct hci_dev *hdev, u8 status)
 {
 	if (status) {
