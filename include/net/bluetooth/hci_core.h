@@ -273,6 +273,8 @@ struct hci_dev {
 
 	struct list_head	conn_params;
 
+	struct list_head	pending_auto_conn;
+
 	struct hci_dev_stats	stat;
 
 	atomic_t		promisc;
@@ -772,6 +774,13 @@ void hci_remove_conn_params(struct hci_dev *hdev, bdaddr_t *addr,
 struct hci_conn_params *hci_find_conn_params(struct hci_dev *hdev,
 					   bdaddr_t *addr, u8 addr_type);
 void hci_conn_params_put(struct hci_conn_params *params);
+
+bool hci_has_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+			       u8 addr_type);
+int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				u8 addr_type);
+void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				    u8 addr_type);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 
