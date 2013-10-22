@@ -628,6 +628,7 @@ int hci_conn_check_secure(struct hci_conn *conn, __u8 sec_level);
 int hci_conn_security(struct hci_conn *conn, __u8 sec_level, __u8 auth_type);
 int hci_conn_change_link_key(struct hci_conn *conn);
 int hci_conn_switch_role(struct hci_conn *conn, __u8 role);
+int hci_create_le_conn(struct hci_conn *conn);
 
 void hci_conn_enter_active_mode(struct hci_conn *conn, __u8 force_active);
 
@@ -781,6 +782,8 @@ int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				u8 addr_type);
 void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				    u8 addr_type);
+
+void hci_check_background_scan(struct hci_dev *hdev);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 

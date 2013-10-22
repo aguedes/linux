@@ -3547,8 +3547,65 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	hci_proto_connect_cfm(conn, ev->status);
 
+	__hci_remove_pending_auto_conn(hdev, &ev->bdaddr, ev->bdaddr_type);
+
 unlock:
 	hci_dev_unlock(hdev);
+
+	/* Check the background scanning since it may have been temporarily
+	 * stopped if the controller doesn't support scanning and creating
+	 * connection at the same time.
+	 */
+	hci_check_background_scan(hdev);
+}
+
+static void check_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				    u8 addr_type)
+{
+	struct hci_conn *conn;
+	struct hci_conn_params *params;
+	int err;
+
+	if (!hci_has_pending_auto_conn(hdev, addr, addr_type))
+		return;
+
+	/* If there is an ongoing conneciton attempt we simply return since the
+	 * controller is able to carry out only one connection attempt at the
+	 * time.
+	 */
+	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+	if (conn)
+		return;
+
+	conn = hci_conn_add(hdev, LE_LINK, addr);
+	if (!conn)
+		return;
+
+	conn->dst_type = addr_type;
+	conn->src_type = hdev->own_addr_type;
+	conn->out = true;
+	conn->link_mode |= HCI_LM_MASTER;
+	conn->sec_level = BT_SECURITY_LOW;
+	conn->pending_sec_level = BT_SECURITY_LOW;
+	conn->auth_type = HCI_AT_NO_BONDING;
+
+	params = hci_find_conn_params(hdev, &conn->dst, conn->dst_type);
+	if (params) {
+		conn->conn_interval_min = params->conn_interval_min;
+		conn->conn_interval_max = params->conn_interval_max;
+		hci_conn_params_put(params);
+	} else {
+		conn->conn_interval_min = hdev->le_conn_min_interval;
+		conn->conn_interval_max = hdev->le_conn_max_interval;
+	}
+
+	err = hci_create_le_conn(conn);
+	if (err) {
+		BT_ERR("Failed to create LE connection: %d", err);
+		return;
+	}
+
+	conn->state = BT_CONNECT;
 }
 
 static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -3559,6 +3616,8 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
+
+		check_pending_auto_conn(hdev, &ev->bdaddr, ev->bdaddr_type);
 
 		rssi = ev->data[ev->length];
 		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,
