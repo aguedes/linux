@@ -518,8 +518,11 @@ static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
 {
 	struct hci_conn *conn;
 
-	if (status == 0)
+	if (status == 0) {
+		cancel_delayed_work(&hdev->le_scan_disable);
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 		return;
+	}
 
 	BT_ERR("HCI request failed to create LE connection: status 0x%2.2x",
 	       status);
@@ -543,6 +546,17 @@ done:
 	hci_dev_unlock(hdev);
 }
 
+/* Check if controller supports creating a connection while scanning is
+ * runnning.
+ */
+static bool is_scan_and_conn_supported(struct hci_dev *hdev)
+{
+	u8 mask = BIT(6) | BIT(7);
+
+	/* Return true if both bits are set */
+	return (hdev->le_states[2] & mask) == mask;
+}
+
 static int hci_create_le_conn(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
@@ -551,6 +565,20 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	int err;
 
 	hci_req_init(&req, hdev);
+
+	/* If controller is scanning but it doesn't support scanning and
+	 * creating a connection at the same time, we stop scanning.
+	 * Otherwise, LE Create Connection command fails.
+	 */
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    !is_scan_and_conn_supported(hdev)) {
+		struct hci_cp_le_set_scan_enable enable_cp;
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+	}
 
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = cpu_to_le16(hdev->le_scan_interval);
