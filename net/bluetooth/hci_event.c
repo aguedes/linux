@@ -1785,6 +1785,7 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	struct hci_conn *conn;
 	u8 type;
 	bool send_mgmt_event = false;
+	struct hci_conn_params *params;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
@@ -1816,6 +1817,31 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	if (conn->type == ACL_LINK && conn->flush_key)
 		hci_remove_link_key(hdev, &conn->dst);
+
+	params = hci_find_conn_params(hdev, &conn->dst, conn->dst_type);
+	if (params) {
+		int err;
+
+		switch (params->auto_connect){
+		case HCI_AUTO_CONN_LINK_LOSS:
+			if (ev->reason != HCI_ERROR_CONNECTION_TIMEOUT)
+				break;
+			/* Fall through */
+
+		case HCI_AUTO_CONN_ALWAYS:
+			err = __hci_add_pending_auto_conn(hdev, &conn->dst,
+							  conn->dst_type);
+			if (err)
+				BT_ERR("Failed to add pending auto connection "
+				       " %d", err);
+			break;
+
+		default:
+			break;
+		}
+
+		hci_conn_params_put(params);
+	}
 
 	type = conn->type;
 	hci_proto_disconn_cfm(conn, ev->reason);
