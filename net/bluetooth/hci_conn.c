@@ -552,6 +552,26 @@ static int hci_create_le_conn(struct hci_conn *conn)
 
 	hci_req_init(&req, hdev);
 
+	/* If controller is scanning, we stop it since some controllers are
+	 * not able to scan and connect at the same time.
+	 */
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags)) {
+		struct hci_cp_le_set_scan_enable enable_cp;
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_DISABLE;
+		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+
+		/* If the discovery procedure is running, we will prematurely
+		 * stopped it. Thus we have to change the discovery state.
+		 */
+		if (hdev->discovery.state == DISCOVERY_FINDING) {
+			cancel_delayed_work(&hdev->le_scan_disable);
+			hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+		}
+	}
+
 	memset(&cp, 0, sizeof(cp));
 	cp.scan_interval = cpu_to_le16(hdev->le_scan_interval);
 	cp.scan_window = cpu_to_le16(hdev->le_scan_window);
