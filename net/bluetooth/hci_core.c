@@ -3032,6 +3032,18 @@ int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 	return 0;
 }
 
+int hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+			      u8 addr_type)
+{
+	int err;
+
+	hci_dev_lock(hdev);
+	err = __hci_add_pending_auto_conn(hdev, addr, addr_type);
+	hci_dev_unlock(hdev);
+
+	return err;
+}
+
 /* This function requires the caller holds hdev->lock */
 void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				    u8 addr_type)
@@ -3052,6 +3064,14 @@ void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 		if (err)
 			BT_ERR("Failed to run HCI request: err %d", err);
 	}
+}
+
+void hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				  u8 addr_type)
+{
+	hci_dev_lock(hdev);
+	__hci_remove_pending_auto_conn(hdev, addr, addr_type);
+	hci_dev_unlock(hdev);
 }
 
 /* This function requires the caller holds hdev->lock */
