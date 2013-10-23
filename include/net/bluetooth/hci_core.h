@@ -780,8 +780,12 @@ bool hci_has_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 			       u8 addr_type);
 int __hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				u8 addr_type);
+int hci_add_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+			      u8 addr_type);
 void __hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 				    u8 addr_type);
+void hci_remove_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
+				  u8 addr_type);
 
 void hci_check_background_scan(struct hci_dev *hdev);
 
