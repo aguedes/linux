@@ -378,6 +378,12 @@ struct mgmt_cp_add_conn_params {
 } __packed;
 #define MGMT_ADD_CONN_PARAMS_SIZE	(MGMT_ADDR_INFO_SIZE + 5)
 
+#define MGMT_OP_REMOVE_CONN_PARAMS	0x002E
+struct mgmt_cp_remove_conn_params {
+	struct mgmt_addr_info addr;
+} __packed;
+#define MGMT_REMOVE_CONN_PARAMS_SIZE	MGMT_ADDR_INFO_SIZE
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;
