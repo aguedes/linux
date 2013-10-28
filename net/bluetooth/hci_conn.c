@@ -546,17 +546,6 @@ done:
 	hci_dev_unlock(hdev);
 }
 
-/* Check if controller supports creating a connection while scanning is
- * runnning.
- */
-static bool is_scan_and_conn_supported(struct hci_dev *hdev)
-{
-	u8 mask = BIT(6) | BIT(7);
-
-	/* Return true if both bits are set */
-	return (hdev->le_states[2] & mask) == mask;
-}
-
 static int hci_create_le_conn(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
@@ -571,7 +560,7 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	 * Otherwise, LE Create Connection command fails.
 	 */
 	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
-	    !is_scan_and_conn_supported(hdev)) {
+	    !hci_is_scan_and_conn_supported(hdev)) {
 		struct hci_cp_le_set_scan_enable enable_cp;
 
 		memset(&enable_cp, 0, sizeof(enable_cp));

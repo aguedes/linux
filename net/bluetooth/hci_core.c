@@ -4499,3 +4499,14 @@ static void hci_cmd_work(struct work_struct *work)
 		}
 	}
 }
+
+/* Check if controller supports creating a connection while scanning is
+ * runnning.
+ */
+bool hci_is_scan_and_conn_supported(struct hci_dev *hdev)
+{
+	u8 mask = BIT(6) | BIT(7);
+
+	/* Return true if both bits are set */
+	return (hdev->le_states[2] & mask) == mask;
+}
