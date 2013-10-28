@@ -3577,6 +3577,13 @@ static void check_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 	if (conn)
 		return;
 
+	/* If this is a pending connection from connect() then we already have
+	 * the hci_conn object. So we skip creating another hci_conn object.
+	 */
+	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
+	if (conn && conn->dst_type == addr_type)
+		goto create_conn;
+
 	conn = hci_conn_add(hdev, LE_LINK, addr);
 	if (!conn)
 		return;
@@ -3599,6 +3606,7 @@ static void check_pending_auto_conn(struct hci_dev *hdev, bdaddr_t *addr,
 		conn->conn_interval_max = hdev->le_conn_max_interval;
 	}
 
+create_conn:
 	err = hci_create_le_conn(conn);
 	if (err) {
 		BT_ERR("Failed to create LE connection: %d", err);

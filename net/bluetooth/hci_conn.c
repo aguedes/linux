@@ -295,6 +295,11 @@ static void hci_conn_timeout(struct work_struct *work)
 		return;
 
 	switch (conn->state) {
+	case BT_OPEN:
+		if (conn->type == LE_LINK)
+			hci_remove_pending_auto_conn(conn->hdev, &conn->dst,
+						     conn->dst_type);
+		break;
 	case BT_CONNECT:
 	case BT_CONNECT2:
 		if (conn->out) {
@@ -635,13 +640,6 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		goto done;
 	}
 
-	/* Since the controller supports only one LE connection attempt at a
-	 * time, we return -EBUSY if there is any connection attempt running.
-	 */
-	conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
-	if (conn)
-		return ERR_PTR(-EBUSY);
-
 	conn = hci_conn_add(hdev, LE_LINK, dst);
 	if (!conn)
 		return ERR_PTR(-ENOMEM);
@@ -653,7 +651,6 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 
 	conn->src_type = hdev->own_addr_type;
 
-	conn->state = BT_CONNECT;
 	conn->out = true;
 	conn->link_mode |= HCI_LM_MASTER;
 	conn->sec_level = BT_SECURITY_LOW;
@@ -670,9 +667,11 @@ static struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 		conn->conn_interval_max = hdev->le_conn_max_interval;
 	}
 
-	err = hci_create_le_conn(conn);
-	if (err)
+	err = __hci_add_pending_auto_conn(hdev, &conn->dst, conn->dst_type);
+	if (err) {
+		hci_conn_del(conn);
 		return ERR_PTR(err);
+	}
 
 done:
 	hci_conn_hold(conn);
