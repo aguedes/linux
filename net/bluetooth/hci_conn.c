@@ -527,6 +527,8 @@ static void fail_conn_attempt(struct hci_conn *conn, u8 status)
 	hci_proto_connect_cfm(conn, status);
 
 	hci_conn_del(conn);
+
+	hci_update_background_scan(hdev);
 }
 
 static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
