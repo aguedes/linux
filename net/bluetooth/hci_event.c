@@ -3522,6 +3522,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_proto_connect_cfm(conn, ev->status);
 		conn->state = BT_CLOSED;
 		hci_conn_del(conn);
+		hci_update_background_scan(hdev);
 		goto unlock;
 	}
 

@@ -548,6 +548,8 @@ static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
 
 	hci_conn_del(conn);
 
+	hci_update_background_scan(hdev);
+
 done:
 	hci_dev_unlock(hdev);
 }
