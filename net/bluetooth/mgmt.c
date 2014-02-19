@@ -3924,6 +3924,13 @@ static int set_scan_params(struct sock *sk, struct hci_dev *hdev,
 
 	err = cmd_complete(sk, hdev->id, MGMT_OP_SET_SCAN_PARAMS, 0, NULL, 0);
 
+	/* If background scan is running, restart it so new parameters are
+	 * loaded.
+	 */
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    hdev->discovery.state == DISCOVERY_STOPPED)
+		hci_restart_background_scan(hdev);
+
 	hci_dev_unlock(hdev);
 
 	return err;

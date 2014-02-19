@@ -5183,3 +5183,29 @@ void hci_update_background_scan(struct hci_dev *hdev)
 	if (err)
 		BT_ERR("Failed to run HCI request: err %d", err);
 }
+
+static void restart_background_scan_complete(struct hci_dev *hdev, u8 status)
+{
+	if (status)
+		BT_DBG("HCI request failed to restart background scan: "
+		       "status 0x%2.2x", status);
+}
+
+void hci_restart_background_scan(struct hci_dev *hdev)
+{
+	struct hci_request req;
+	int err;
+
+	hci_req_init(&req, hdev);
+
+	hci_req_add_le_scan_disable(&req);
+	hci_req_add_le_passive_scan(&req, hdev);
+
+	err = hci_req_run(&req, restart_background_scan_complete);
+	if (err) {
+		BT_ERR("Failed to run HCI request: err %d", err);
+		return;
+	}
+
+	BT_DBG("%s re-starting background scanning", hdev->name);
+}
