@@ -801,9 +801,9 @@ int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
 
 struct hci_conn_params *hci_conn_params_lookup(struct hci_dev *hdev,
 					       bdaddr_t *addr, u8 addr_type);
-void hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
-			 u8 auto_connect, u16 conn_min_interval,
-			 u16 conn_max_interval);
+int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+			u8 auto_connect, u16 conn_min_interval,
+			u16 conn_max_interval);
 void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
 void hci_conn_params_clear(struct hci_dev *hdev);
 
@@ -1115,6 +1115,18 @@ static inline bool hci_bdaddr_is_rpa(bdaddr_t *bdaddr, u8 addr_type)
 
 	if ((bdaddr->b[5] & 0xc0) == 0x40)
 	       return true;
+
+	return false;
+}
+
+/* Check if address is "random private non-resolvable" type */
+static inline bool hci_bdaddr_is_non_rpa(bdaddr_t *bdaddr, u8 addr_type)
+{
+	if (addr_type != 0x01)
+		return false;
+
+	if ((bdaddr->b[5] & 0xc0) == 0x00)
+		return true;
 
 	return false;
 }

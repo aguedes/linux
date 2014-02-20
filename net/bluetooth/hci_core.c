@@ -3221,11 +3221,25 @@ static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 }
 
 /* This function requires the caller holds hdev->lock */
-void hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
-			 u8 auto_connect, u16 conn_min_interval,
-			 u16 conn_max_interval)
+int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+			u8 auto_connect, u16 conn_min_interval,
+			u16 conn_max_interval)
 {
 	struct hci_conn_params *params;
+
+	if (hci_bdaddr_is_non_rpa(addr, addr_type))
+		return -EINVAL;
+
+	if (hci_bdaddr_is_rpa(addr, addr_type)) {
+		struct smp_irk *irk;
+
+		irk = hci_get_irk(hdev, addr, addr_type);
+		if (!irk)
+			return -EINVAL;
+
+		addr = &irk->bdaddr;
+		addr_type = irk->addr_type;
+	}
 
 	params = hci_conn_params_lookup(hdev, addr, addr_type);
 	if (params)
@@ -3234,7 +3248,7 @@ void hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params) {
 		BT_ERR("Out of memory");
-		return;
+		return -ENOMEM;
 	}
 
 	bacpy(&params->addr, addr);
@@ -3261,6 +3275,8 @@ update:
 	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
 	       "conn_max_interval 0x%.4x", addr, addr_type, auto_connect,
 	       conn_min_interval, conn_max_interval);
+
+	return 0;
 }
 
 /* This function requires the caller holds hdev->lock */
