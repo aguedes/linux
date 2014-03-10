@@ -579,7 +579,7 @@ static void create_le_conn_complete(struct hci_dev *hdev, u8 status)
 	if (status == 0)
 		return;
 
-	BT_ERR("HCI request failed to create LE connection: status 0x%2.2x",
+	BT_DBG("HCI request failed to create LE connection: status 0x%2.2x",
 	       status);
 
 	hci_dev_lock(hdev);
