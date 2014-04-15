@@ -900,6 +900,34 @@ static int conn_max_interval_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(conn_max_interval_fops, conn_max_interval_get,
 			conn_max_interval_set, "%llu\n");
 
+static int conn_latency_set(void *data, u64 val)
+{
+	struct hci_dev *hdev = data;
+
+	if (val > 0x01f3)
+		return -EINVAL;
+
+	hci_dev_lock(hdev);
+	hdev->le_conn_latency = val;
+	hci_dev_unlock(hdev);
+
+	return 0;
+}
+
+static int conn_latency_get(void *data, u64 *val)
+{
+	struct hci_dev *hdev = data;
+
+	hci_dev_lock(hdev);
+	*val = hdev->le_conn_latency;
+	hci_dev_unlock(hdev);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(conn_latency_fops, conn_latency_get, conn_latency_set,
+			"%llu\n");
+
 static int adv_channel_map_set(void *data, u64 val)
 {
 	struct hci_dev *hdev = data;
@@ -1879,6 +1907,8 @@ static int __hci_init(struct hci_dev *hdev)
 				    hdev, &conn_min_interval_fops);
 		debugfs_create_file("conn_max_interval", 0644, hdev->debugfs,
 				    hdev, &conn_max_interval_fops);
+		debugfs_create_file("conn_latency", 0644, hdev->debugfs, hdev,
+				    &conn_latency_fops);
 		debugfs_create_file("adv_channel_map", 0644, hdev->debugfs,
 				    hdev, &adv_channel_map_fops);
 		debugfs_create_file("6lowpan", 0644, hdev->debugfs, hdev,
@@ -3836,6 +3866,7 @@ struct hci_dev *hci_alloc_dev(void)
 	hdev->le_scan_window = 0x0030;
 	hdev->le_conn_min_interval = 0x0028;
 	hdev->le_conn_max_interval = 0x0038;
+	hdev->le_conn_latency = 0;
 
 	hdev->rpa_timeout = HCI_DEFAULT_RPA_TIMEOUT;
 	hdev->discov_interleaved_timeout = DISCOV_INTERLEAVED_TIMEOUT;
