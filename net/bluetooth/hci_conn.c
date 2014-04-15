@@ -628,7 +628,7 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 	cp.own_address_type = own_addr_type;
 	cp.conn_interval_min = cpu_to_le16(min);
 	cp.conn_interval_max = cpu_to_le16(max);
-	cp.supervision_timeout = cpu_to_le16(0x002a);
+	cp.supervision_timeout = cpu_to_le16(hdev->le_conn_supervision_timeo);
 	cp.conn_latency = cpu_to_le16(hdev->le_conn_latency);
 	cp.min_ce_len = cpu_to_le16(0x0000);
 	cp.max_ce_len = cpu_to_le16(0x0000);
