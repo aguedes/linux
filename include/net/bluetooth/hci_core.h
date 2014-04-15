@@ -382,6 +382,8 @@ struct hci_conn {
 	__u16		setting;
 	__u16		le_conn_min_interval;
 	__u16		le_conn_max_interval;
+	__u16		le_latency;
+	__u16		le_supervision_timeo;
 	__s8		rssi;
 	__s8		tx_power;
 	__s8		max_tx_power;
@@ -436,6 +438,8 @@ struct hci_conn_params {
 
 	u16 conn_min_interval;
 	u16 conn_max_interval;
+	u16 latency;
+	u16 supervision_timeo;
 
 	enum {
 		HCI_AUTO_CONN_DISABLED,
@@ -842,7 +846,8 @@ struct hci_conn_params *hci_conn_params_lookup(struct hci_dev *hdev,
 					       bdaddr_t *addr, u8 addr_type);
 int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 			u8 auto_connect, u16 conn_min_interval,
-			u16 conn_max_interval);
+			u16 conn_max_interval, u16 latency,
+			u16 supervision_timeo);
 void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
 void hci_conn_params_clear(struct hci_dev *hdev);
 
