@@ -4053,6 +4053,9 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	conn->sec_level = BT_SECURITY_LOW;
 	conn->handle = __le16_to_cpu(ev->handle);
+	conn->le_interval = __le16_to_cpu(ev->interval);
+	conn->le_latency = __le16_to_cpu(ev->latency);
+	conn->le_supervision_timeo = __le16_to_cpu(ev->supervision_timeout);
 	conn->state = BT_CONNECTED;
 
 	if (test_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags))
