@@ -4283,6 +4283,17 @@ static void hci_le_remote_conn_param_req_evt(struct hci_dev *hdev,
 	hci_send_cmd(hdev, HCI_OP_LE_CONN_PARAM_REQ_REPLY, sizeof(cp), &cp);
 }
 
+static void hci_le_conn_update_complete_evt(struct hci_dev *hdev,
+					    struct sk_buff *skb)
+{
+	struct hci_ev_conn_update_complete *ev = (void *) skb->data;
+
+	if (ev->status)
+		return;
+
+	//TODO
+}
+
 static void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_le_meta *le_ev = (void *) skb->data;
@@ -4304,6 +4315,10 @@ static void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_EV_LE_REMOTE_CONN_PARAM_REQ:
 		hci_le_remote_conn_param_req_evt(hdev, skb);
+		break;
+
+	case HCI_EV_CONN_UPDATE_COMPLETE:
+		hci_le_conn_update_complete_evt(hdev, skb);
 		break;
 
 	default:
