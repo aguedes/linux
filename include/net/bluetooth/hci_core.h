@@ -383,6 +383,9 @@ struct hci_conn {
 	__s8		rssi;
 	__s8		tx_power;
 	__s8		max_tx_power;
+	__u16		le_interval;
+	__u16		le_latency;
+	__u16		le_supervision_timeo;
 	unsigned long	flags;
 
 	unsigned long	conn_info_timestamp;
