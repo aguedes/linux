@@ -1689,6 +1689,15 @@ struct hci_ev_le_conn_complete {
 	__u8     clk_accurancy;
 } __packed;
 
+#define HCI_EV_CONN_UPDATE_COMPLETE	0x03
+struct hci_ev_conn_update_complete {
+	__u8	status;
+	__le16	handle;
+	__le16	interval;
+	__le16	latency;
+	__le16	timeout;
+} __packed;
+
 #define HCI_EV_LE_LTK_REQ		0x05
 struct hci_ev_le_ltk_req {
 	__le16	handle;
