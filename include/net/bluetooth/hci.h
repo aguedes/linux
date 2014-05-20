@@ -1705,6 +1705,15 @@ struct hci_ev_le_remote_conn_param_req {
 	__le16 timeout;
 } __packed;
 
+#define HCI_EV_CONN_UPDATE_COMPLETE	0x3e
+struct hci_ev_conn_update_complete {
+	__u8	status;
+	__le16	handle;
+	__le16	interval;
+	__le16	latency;
+	__le16	timeout;
+} __packed;
+
 /* Advertising report event types */
 #define LE_ADV_IND		0x00
 #define LE_ADV_DIRECT_IND	0x01
