@@ -111,6 +111,7 @@ static const u16 mgmt_events[] = {
 	MGMT_EV_PASSKEY_NOTIFY,
 	MGMT_EV_NEW_IRK,
 	MGMT_EV_NEW_CSRK,
+	MGMT_EV_NEW_CONN_PARAM,
 };
 
 #define CACHE_TIMEOUT	msecs_to_jiffies(2 * 1000)
@@ -5331,6 +5332,51 @@ void mgmt_new_csrk(struct hci_dev *hdev, struct smp_csrk *csrk,
 	memcpy(ev.key.val, csrk->val, sizeof(csrk->val));
 
 	mgmt_event(MGMT_EV_NEW_CSRK, hdev, &ev, sizeof(ev), NULL);
+}
+
+static bool is_identity_address(bdaddr_t *addr, u8 type)
+{
+	if (type == ADDR_LE_DEV_PUBLIC)
+		return true;
+
+	/* Random static type */
+	if (type == ADDR_LE_DEV_RANDOM && (addr->b[5] & 0xc0) == 0xc0)
+		return true;
+
+	return false;
+}
+
+void mgmt_new_conn_param(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 bdaddr_type,
+			 u16 min_interval, u16 max_interval, u16 latency,
+			 u16 timeout)
+{
+	struct mgmt_ev_new_conn_param ev;
+	struct smp_irk *irk;
+
+	memset(&ev, 0, sizeof(ev));
+
+	irk = hci_get_irk(hdev, bdaddr, bdaddr_type);
+	if (irk) {
+		bacpy(&ev.addr.bdaddr, &irk->bdaddr);
+		ev.addr.type = link_to_bdaddr(LE_LINK, irk->addr_type);
+
+		ev.store_hint = 0x01;
+	} else {
+		bacpy(&ev.addr.bdaddr, bdaddr);
+		ev.addr.type = link_to_bdaddr(LE_LINK, bdaddr_type);
+
+		if (is_identity_address(bdaddr, bdaddr_type))
+			ev.store_hint = 0x01;
+		else
+			ev.store_hint = 0x00;
+	}
+
+	ev.min_interval = min_interval;
+	ev.max_interval = max_interval;
+	ev.latency = latency;
+	ev.timeout = timeout;
+
+	mgmt_event(MGMT_EV_NEW_CONN_PARAM, hdev, &ev, sizeof(ev), NULL);
 }
 
 static inline u16 eir_append_data(u8 *eir, u16 eir_len, u8 type, u8 *data,
