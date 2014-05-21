@@ -1086,7 +1086,10 @@ static ssize_t le_auto_conn_write(struct file *file, const char __user *data,
 		hci_dev_lock(hdev);
 		err = hci_conn_params_add(hdev, &addr, addr_type, auto_connect,
 					  hdev->le_conn_min_interval,
-					  hdev->le_conn_max_interval);
+					  hdev->le_conn_max_interval,
+					  hdev->le_conn_latency,
+					  hdev->le_conn_supervision_timeo);
+
 		hci_dev_unlock(hdev);
 
 		if (err)
@@ -3537,7 +3540,8 @@ static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 /* This function requires the caller holds hdev->lock */
 int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 			u8 auto_connect, u16 conn_min_interval,
-			u16 conn_max_interval)
+			u16 conn_max_interval, u16 latency,
+			u16 supervision_timeo)
 {
 	struct hci_conn_params *params;
 
@@ -3562,6 +3566,8 @@ int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 update:
 	params->conn_min_interval = conn_min_interval;
 	params->conn_max_interval = conn_max_interval;
+	params->supervision_timeo = supervision_timeo;
+	params->latency = latency;
 	params->auto_connect = auto_connect;
 
 	switch (auto_connect) {
@@ -3576,8 +3582,9 @@ update:
 	}
 
 	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
-	       "conn_max_interval 0x%.4x", addr, addr_type, auto_connect,
-	       conn_min_interval, conn_max_interval);
+	       "conn_max_interval 0x%.4x latency 0x%.4x superv_timeo 0x%.4x",
+	       addr, addr_type, auto_connect, conn_min_interval,
+	       conn_max_interval, latency, supervision_timeo);
 
 	return 0;
 }

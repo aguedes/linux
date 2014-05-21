@@ -602,7 +602,7 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 	struct hci_conn_params *params;
 	struct hci_dev *hdev = conn->hdev;
 	u8 own_addr_type;
-	u16 min, max;
+	u16 min, max, latency, timeout;
 
 	memset(&cp, 0, sizeof(cp));
 
@@ -616,9 +616,13 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 	if (params) {
 		min = params->conn_min_interval;
 		max = params->conn_max_interval;
+		latency = params->latency;
+		timeout = params->supervision_timeo;
 	} else {
 		min = hdev->le_conn_min_interval;
 		max = hdev->le_conn_max_interval;
+		latency = hdev->le_conn_latency;
+		timeout = hdev->le_conn_supervision_timeo;
 	}
 
 	cp.scan_interval = cpu_to_le16(hdev->le_scan_interval);
@@ -628,8 +632,8 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 	cp.own_address_type = own_addr_type;
 	cp.conn_interval_min = cpu_to_le16(min);
 	cp.conn_interval_max = cpu_to_le16(max);
-	cp.supervision_timeout = cpu_to_le16(hdev->le_conn_supervision_timeo);
-	cp.conn_latency = cpu_to_le16(hdev->le_conn_latency);
+	cp.supervision_timeout = cpu_to_le16(timeout);
+	cp.conn_latency = cpu_to_le16(latency);
 	cp.min_ce_len = cpu_to_le16(0x0000);
 	cp.max_ce_len = cpu_to_le16(0x0000);
 
