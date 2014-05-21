@@ -85,6 +85,7 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_PRIVACY,
 	MGMT_OP_LOAD_IRKS,
 	MGMT_OP_GET_CONN_INFO,
+	MGMT_OP_LOAD_CONN_PARAMS,
 };
 
 static const u16 mgmt_events[] = {
@@ -4793,6 +4794,71 @@ unlock:
 	return err;
 }
 
+static int load_conn_params(struct sock *sk, struct hci_dev *hdev,
+			    void *cp_data, u16 len)
+{
+	struct mgmt_cp_load_conn_params *cp = cp_data;
+	u16 param_count, expected_len;
+	int i, err = 0;
+
+	if (!lmp_le_capable(hdev))
+		return cmd_status(sk, hdev->id, MGMT_OP_LOAD_CONN_PARAMS,
+				  MGMT_STATUS_NOT_SUPPORTED);
+
+	param_count = le16_to_cpu(cp->param_count);
+
+	expected_len = sizeof(*cp) +
+		       param_count * sizeof(struct mgmt_conn_param_info);
+	if (len != expected_len) {
+		BT_DBG("expected %u bytes, got %u bytes", expected_len, len);
+		return cmd_status(sk, hdev->id, MGMT_OP_LOAD_CONN_PARAMS,
+				  MGMT_STATUS_INVALID_PARAMS);
+	}
+
+	BT_DBG("%s param_count %u", hdev->name, param_count);
+
+	hci_dev_lock(hdev);
+
+	for (i = 0; i < param_count; i++) {
+		struct mgmt_conn_param_info *param = &cp->params[i];
+		u16 min, max, latency, timeout;
+		u8 type;
+
+		if (!bdaddr_type_is_le(param->addr.type)) {
+			err = EINVAL;
+			break;
+		}
+
+		if (param->addr.type == BDADDR_LE_PUBLIC)
+			type = ADDR_LE_DEV_PUBLIC;
+		else
+			type = ADDR_LE_DEV_RANDOM;
+
+		min = le16_to_cpu(param->min_interval);
+		max = le16_to_cpu(param->max_interval);
+		latency = le16_to_cpu(param->latency);
+		timeout = le16_to_cpu(param->supervision_timeout);
+
+		err = hci_conn_params_add(hdev, &param->addr.bdaddr, type, min,
+					  max, latency, timeout);
+		if (err)
+			break;
+	}
+
+	hci_dev_unlock(hdev);
+
+	if (err) {
+		hci_dev_lock(hdev);
+		hci_conn_params_clear(hdev);
+		hci_dev_unlock(hdev);
+
+		return cmd_status(sk, hdev->id, MGMT_OP_LOAD_CONN_PARAMS,
+				  MGMT_STATUS_INVALID_PARAMS);
+	}
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_LOAD_CONN_PARAMS, 0, NULL, 0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -4849,6 +4915,7 @@ static const struct mgmt_handler {
 	{ set_privacy,            false, MGMT_SET_PRIVACY_SIZE },
 	{ load_irks,              true,  MGMT_LOAD_IRKS_SIZE },
 	{ get_conn_info,          false, MGMT_GET_CONN_INFO_SIZE },
+	{ load_conn_params,       true,  MGMT_LOAD_CONN_PARAMS_SIZE},
 };
 
 
