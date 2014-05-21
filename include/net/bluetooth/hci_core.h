@@ -378,8 +378,6 @@ struct hci_conn {
 	__u8		passkey_entered;
 	__u16		disc_timeout;
 	__u16		setting;
-	__u16		le_conn_min_interval;
-	__u16		le_conn_max_interval;
 	__s8		rssi;
 	__s8		tx_power;
 	__s8		max_tx_power;

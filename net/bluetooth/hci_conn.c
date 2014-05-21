@@ -599,8 +599,10 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 				       struct hci_conn *conn)
 {
 	struct hci_cp_le_create_conn cp;
+	struct hci_conn_params *params;
 	struct hci_dev *hdev = conn->hdev;
 	u8 own_addr_type;
+	u16 min, max;
 
 	memset(&cp, 0, sizeof(cp));
 
@@ -610,13 +612,22 @@ static void hci_req_add_le_create_conn(struct hci_request *req,
 	if (hci_update_random_address(req, false, &own_addr_type))
 		return;
 
+	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
+	if (params) {
+		min = params->conn_min_interval;
+		max = params->conn_max_interval;
+	} else {
+		min = hdev->le_conn_min_interval;
+		max = hdev->le_conn_max_interval;
+	}
+
 	cp.scan_interval = cpu_to_le16(hdev->le_scan_interval);
 	cp.scan_window = cpu_to_le16(hdev->le_scan_window);
 	bacpy(&cp.peer_addr, &conn->dst);
 	cp.peer_addr_type = conn->dst_type;
 	cp.own_address_type = own_addr_type;
-	cp.conn_interval_min = cpu_to_le16(conn->le_conn_min_interval);
-	cp.conn_interval_max = cpu_to_le16(conn->le_conn_max_interval);
+	cp.conn_interval_min = cpu_to_le16(min);
+	cp.conn_interval_max = cpu_to_le16(max);
 	cp.supervision_timeout = cpu_to_le16(0x002a);
 	cp.min_ce_len = cpu_to_le16(0x0000);
 	cp.max_ce_len = cpu_to_le16(0x0000);
@@ -668,7 +679,6 @@ static void hci_req_directed_advertising(struct hci_request *req,
 struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 				u8 dst_type, u8 sec_level, u8 auth_type)
 {
-	struct hci_conn_params *params;
 	struct hci_conn *conn;
 	struct smp_irk *irk;
 	struct hci_request req;
@@ -734,15 +744,6 @@ struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 
 	conn->out = true;
 	conn->link_mode |= HCI_LM_MASTER;
-
-	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
-	if (params) {
-		conn->le_conn_min_interval = params->conn_min_interval;
-		conn->le_conn_max_interval = params->conn_max_interval;
-	} else {
-		conn->le_conn_min_interval = hdev->le_conn_min_interval;
-		conn->le_conn_max_interval = hdev->le_conn_max_interval;
-	}
 
 	/* If controller is scanning, we stop it since some controllers are
 	 * not able to scan and connect at the same time. Also set the
