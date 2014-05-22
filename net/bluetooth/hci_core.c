@@ -3535,9 +3535,8 @@ static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 
 /* This function requires the caller holds hdev->lock */
 int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
-			u8 auto_connect, u16 conn_min_interval,
-			u16 conn_max_interval, u16 latency,
-			u16 supervision_timeo)
+			u16 conn_min_interval, u16 conn_max_interval,
+			u16 latency, u16 supervision_timeo)
 {
 	struct hci_conn_params *params;
 
@@ -3564,23 +3563,11 @@ update:
 	params->conn_max_interval = conn_max_interval;
 	params->supervision_timeo = supervision_timeo;
 	params->latency = latency;
-	params->auto_connect = auto_connect;
 
-	switch (auto_connect) {
-	case HCI_AUTO_CONN_DISABLED:
-	case HCI_AUTO_CONN_LINK_LOSS:
-		hci_pend_le_conn_del(hdev, addr, addr_type);
-		break;
-	case HCI_AUTO_CONN_ALWAYS:
-		if (!is_connected(hdev, addr, addr_type))
-			hci_pend_le_conn_add(hdev, addr, addr_type);
-		break;
-	}
-
-	BT_DBG("addr %pMR (type %u) auto_connect %u conn_min_interval 0x%.4x "
+	BT_DBG("addr %pMR (type %u) conn_min_interval 0x%.4x "
 	       "conn_max_interval 0x%.4x latency 0x%.4x superv_timeo 0x%.4x",
-	       addr, addr_type, auto_connect, conn_min_interval,
-	       conn_max_interval, latency, supervision_timeo);
+	       addr, addr_type, conn_min_interval, conn_max_interval, latency,
+	       supervision_timeo);
 
 	return 0;
 }
@@ -3593,8 +3580,6 @@ void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
 	params = hci_conn_params_lookup(hdev, addr, addr_type);
 	if (!params)
 		return;
-
-	hci_pend_le_conn_del(hdev, addr, addr_type);
 
 	list_del(&params->list);
 	kfree(params);
