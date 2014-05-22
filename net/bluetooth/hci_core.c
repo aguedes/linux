@@ -3703,6 +3703,91 @@ void hci_pend_le_conns_clear(struct hci_dev *hdev)
 	BT_DBG("All LE pending connections cleared");
 }
 
+/* This function requires the caller holds hdev->lock */
+struct hci_le_auto_conn_entry *hci_le_auto_conn_lookup(struct hci_dev *hdev,
+						       bdaddr_t *addr,
+						       u8 addr_type)
+{
+	struct hci_le_auto_conn_entry *entry;
+
+	list_for_each_entry(entry, &hdev->le_auto_connect, list) {
+		if (bacmp(&entry->addr, addr) == 0 &&
+		    entry->addr_type == addr_type)
+			return entry;
+	}
+
+	return NULL;
+}
+
+/* This function requires the caller holds hdev->lock */
+int hci_le_auto_conn_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+			 u8 option)
+{
+	struct hci_le_auto_conn_entry *entry;
+
+	if (!is_identity_address(addr, addr_type))
+		return -EINVAL;
+
+	entry = hci_le_auto_conn_lookup(hdev, addr, addr_type);
+	if (entry)
+		goto update;
+
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry)
+		return -ENOMEM;
+
+	bacpy(&entry->addr, addr);
+	entry->addr_type = addr_type;
+
+	list_add(&entry->list, &hdev->le_auto_connect);
+
+update:
+	entry->option = option;
+
+	switch (option) {
+	case HCI_AUTO_CONN_ALWAYS:
+		if (!is_connected(hdev, addr, addr_type))
+			hci_pend_le_conn_add(hdev, addr, addr_type);
+		break;
+	default:
+		hci_pend_le_conn_del(hdev, addr, addr_type);
+	}
+
+	BT_DBG("addr %pMR (type %u) option %u", addr, addr_type, option);
+
+	return 0;
+}
+
+/* This function requires the caller holds hdev->lock */
+void hci_le_auto_conn_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type)
+{
+	struct hci_le_auto_conn_entry *entry;
+
+	entry = hci_le_auto_conn_lookup(hdev, addr, addr_type);
+	if (!entry)
+		return;
+
+	hci_pend_le_conn_del(hdev, addr, addr_type);
+
+	list_del(&entry->list);
+	kfree(entry);
+
+	BT_DBG("addr %pMR (type %u)", addr, addr_type);
+}
+
+/* This function requires the caller holds hdev->lock */
+void hci_le_auto_conn_clear(struct hci_dev *hdev)
+{
+	struct hci_le_auto_conn_entry *entry, *tmp;
+
+	list_for_each_entry_safe(entry, tmp, &hdev->le_auto_connect, list) {
+		list_del(&entry->list);
+		kfree(entry);
+	}
+
+	BT_DBG("All LE auto connection were removed");
+}
+
 static void inquiry_complete(struct hci_dev *hdev, u8 status)
 {
 	if (status) {

@@ -309,6 +309,7 @@ struct hci_dev {
 	struct list_head	le_white_list;
 	struct list_head	le_conn_params;
 	struct list_head	pend_le_conns;
+	struct list_head	le_auto_connect;
 
 	struct hci_dev_stats	stat;
 
@@ -445,6 +446,15 @@ struct hci_conn_params {
 		HCI_AUTO_CONN_ALWAYS,
 		HCI_AUTO_CONN_LINK_LOSS,
 	} auto_connect;
+};
+
+struct hci_le_auto_conn_entry {
+	struct list_head list;
+
+	bdaddr_t addr;
+	u8 addr_type;
+
+	u8 option;
 };
 
 extern struct list_head hci_dev_list;
@@ -855,6 +865,14 @@ struct bdaddr_list *hci_pend_le_conn_lookup(struct hci_dev *hdev,
 void hci_pend_le_conn_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
 void hci_pend_le_conn_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
 void hci_pend_le_conns_clear(struct hci_dev *hdev);
+
+struct hci_le_auto_conn_entry *hci_le_auto_conn_lookup(struct hci_dev *hdev,
+						       bdaddr_t *addr,
+						       u8 addr_type);
+int hci_le_auto_conn_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+			 u8 option);
+void hci_le_auto_conn_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
+void hci_le_auto_conn_clear(struct hci_dev *hdev);
 
 void hci_update_background_scan(struct hci_dev *hdev);
 
