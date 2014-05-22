@@ -2133,7 +2133,7 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_disconn_complete *ev = (void *) skb->data;
 	u8 reason = hci_to_mgmt_reason(ev->reason);
-	struct hci_conn_params *params;
+	struct hci_le_auto_conn_entry *entry;
 	struct hci_conn *conn;
 	bool mgmt_connected;
 	u8 type;
@@ -2161,9 +2161,9 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (conn->type == ACL_LINK && conn->flush_key)
 		hci_remove_link_key(hdev, &conn->dst);
 
-	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
-	if (params) {
-		switch (params->auto_connect) {
+	entry = hci_le_auto_conn_lookup(hdev, &conn->dst, conn->dst_type);
+	if (entry) {
+		switch (entry->option) {
 		case HCI_AUTO_CONN_LINK_LOSS:
 			if (ev->reason != HCI_ERROR_CONNECTION_TIMEOUT)
 				break;

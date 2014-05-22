@@ -2494,6 +2494,8 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 
 		hci_conn_params_del(hdev, &cp->addr.bdaddr, addr_type);
 
+		hci_le_auto_conn_del(hdev, &cp->addr.bdaddr, addr_type);
+
 		err = hci_remove_ltk(hdev, &cp->addr.bdaddr, addr_type);
 	}
 
@@ -4966,11 +4968,11 @@ void mgmt_index_removed(struct hci_dev *hdev)
 /* This function requires the caller holds hdev->lock */
 static void restart_le_auto_conns(struct hci_dev *hdev)
 {
-	struct hci_conn_params *p;
+	struct hci_le_auto_conn_entry *e;
 
-	list_for_each_entry(p, &hdev->le_conn_params, list) {
-		if (p->auto_connect == HCI_AUTO_CONN_ALWAYS)
-			hci_pend_le_conn_add(hdev, &p->addr, p->addr_type);
+	list_for_each_entry(e, &hdev->le_auto_connect, list) {
+		if (e->option == HCI_AUTO_CONN_ALWAYS)
+			hci_pend_le_conn_add(hdev, &e->addr, e->addr_type);
 	}
 }
 

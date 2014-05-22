@@ -1030,13 +1030,13 @@ static const struct file_operations lowpan_debugfs_fops = {
 static int le_auto_conn_show(struct seq_file *sf, void *ptr)
 {
 	struct hci_dev *hdev = sf->private;
-	struct hci_conn_params *p;
+	struct hci_le_auto_conn_entry *e;
 
 	hci_dev_lock(hdev);
 
-	list_for_each_entry(p, &hdev->le_conn_params, list) {
-		seq_printf(sf, "%pMR %u %u\n", &p->addr, p->addr_type,
-			   p->auto_connect);
+	list_for_each_entry(e, &hdev->le_auto_connect, list) {
+		seq_printf(sf, "%pMR %u %u\n", &e->addr, e->addr_type,
+			   e->option);
 	}
 
 	hci_dev_unlock(hdev);
@@ -1084,12 +1084,8 @@ static ssize_t le_auto_conn_write(struct file *file, const char __user *data,
 		}
 
 		hci_dev_lock(hdev);
-		err = hci_conn_params_add(hdev, &addr, addr_type, auto_connect,
-					  hdev->le_conn_min_interval,
-					  hdev->le_conn_max_interval,
-					  hdev->le_conn_latency,
-					  hdev->le_conn_supervision_timeo);
-
+		err = hci_le_auto_conn_add(hdev, &addr, addr_type,
+					   auto_connect);
 		hci_dev_unlock(hdev);
 
 		if (err)
@@ -1105,11 +1101,11 @@ static ssize_t le_auto_conn_write(struct file *file, const char __user *data,
 		}
 
 		hci_dev_lock(hdev);
-		hci_conn_params_del(hdev, &addr, addr_type);
+		hci_le_auto_conn_del(hdev, &addr, addr_type);
 		hci_dev_unlock(hdev);
 	} else if (memcmp(buf, "clr", 3) == 0) {
 		hci_dev_lock(hdev);
-		hci_conn_params_clear(hdev);
+		hci_le_auto_conn_clear(hdev);
 		hci_pend_le_conns_clear(hdev);
 		hci_update_background_scan(hdev);
 		hci_dev_unlock(hdev);
