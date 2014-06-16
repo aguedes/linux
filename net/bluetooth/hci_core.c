@@ -3473,18 +3473,6 @@ static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 	return true;
 }
 
-static bool is_identity_address(bdaddr_t *addr, u8 addr_type)
-{
-	if (addr_type == ADDR_LE_DEV_PUBLIC)
-		return true;
-
-	/* Check for Random Static address type */
-	if ((addr->b[5] & 0xc0) == 0xc0)
-		return true;
-
-	return false;
-}
-
 /* This function requires the caller holds hdev->lock */
 int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 			u8 auto_connect, u16 conn_min_interval,
@@ -3492,7 +3480,7 @@ int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 {
 	struct hci_conn_params *params;
 
-	if (!is_identity_address(addr, addr_type))
+	if (!hci_is_identity_address(addr, addr_type))
 		return -EINVAL;
 
 	params = hci_conn_params_lookup(hdev, addr, addr_type);
