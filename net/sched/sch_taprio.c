@@ -212,7 +212,8 @@ static struct sk_buff *taprio_dequeue(struct Qdisc *sch)
 static bool should_restart_cycle(const struct taprio_sched *q,
 				 const struct sched_entry *entry)
 {
-	WARN_ON(!entry);
+	if (WARN_ON(!entry))
+		return false;
 
 	return list_is_last(&entry->list, &q->entries);
 }
