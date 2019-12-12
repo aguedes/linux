@@ -47,7 +47,8 @@
 #define ETH_P_LOOP	0x0060		/* Ethernet Loopback packet	*/
 #define ETH_P_PUP	0x0200		/* Xerox PUP packet		*/
 #define ETH_P_PUPAT	0x0201		/* Xerox PUP Addr Trans packet	*/
-#define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
+#define ETH_P_AVTP	0x22F0		/* AVTP (IEEE 1722)		*/
+#define ETH_P_TSN	ETH_P_AVTP	/* There is no TSN ethertype, we define it for compatibility reasons */
 #define ETH_P_ERSPAN2	0x22EB		/* ERSPAN version 2 (type III)	*/
 #define ETH_P_IP	0x0800		/* Internet Protocol packet	*/
 #define ETH_P_X25	0x0805		/* CCITT X.25			*/
