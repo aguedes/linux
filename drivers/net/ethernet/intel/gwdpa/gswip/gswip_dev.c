@@ -96,7 +96,7 @@ static int np_gswip_parse_dt(struct platform_device *pdev,
 
 	pdata->sw_clk = devm_clk_get(dev, "switch");
 	if (IS_ERR(pdata->sw_clk))
-		return PTR_ERR(priv->pdata.sw_clk);
+		return PTR_ERR(pdata->sw_clk);
 
 	for_each_node_by_name(node, GSWIP_MAC_DEV_NAME) {
 		priv->num_subdev_mac++;
