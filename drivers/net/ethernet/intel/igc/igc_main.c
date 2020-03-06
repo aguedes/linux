@@ -4907,6 +4907,7 @@ static int igc_probe(struct pci_dev *pdev,
 	netdev->features |= NETIF_F_HW_CSUM;
 	netdev->features |= NETIF_F_SCTP_CRC;
 	netdev->features |= NETIF_F_GSO_UDP_L4;
+	netdev->features |= NETIF_F_HW_TC;
 
 #define IGC_GSO_PARTIAL_FEATURES (NETIF_F_GSO_GRE | \
 				  NETIF_F_GSO_GRE_CSUM | \
