@@ -848,7 +848,8 @@ enum ice_status ice_check_reset(struct ice_hw *hw)
 				 GLNVM_ULD_POR_DONE_1_M |\
 				 GLNVM_ULD_PCIER_DONE_2_M)
 
-	uld_mask = ICE_RESET_DONE_MASK;
+	uld_mask = ICE_RESET_DONE_MASK | (hw->func_caps.common_cap.iwarp ?
+					  GLNVM_ULD_PE_DONE_M : 0);
 
 	/* Device is Active; check Global Reset processes are done */
 	for (cnt = 0; cnt < ICE_PF_RESET_WAIT_COUNT; cnt++) {
@@ -1767,6 +1768,11 @@ ice_parse_caps(struct ice_hw *hw, void *buf, u32 cap_count,
 				  "%s: msix_vector_first_id = %d\n", prefix,
 				  caps->msix_vector_first_id);
 			break;
+		case ICE_AQC_CAPS_IWARP:
+			caps->iwarp = (number == 1);
+			ice_debug(hw, ICE_DBG_INIT,
+				  "%s: iwarp = %d\n", prefix, caps->iwarp);
+			break;
 		case ICE_AQC_CAPS_MAX_MTU:
 			caps->max_mtu = number;
 			ice_debug(hw, ICE_DBG_INIT, "%s: max_mtu = %d\n",
@@ -1790,6 +1796,16 @@ ice_parse_caps(struct ice_hw *hw, void *buf, u32 cap_count,
 		ice_debug(hw, ICE_DBG_INIT,
 			  "%s: maxtc = %d (based on #ports)\n", prefix,
 			  caps->maxtc);
+		if (caps->iwarp) {
+			ice_debug(hw, ICE_DBG_INIT, "%s: forcing RDMA off\n",
+				  prefix);
+			caps->iwarp = 0;
+		}
+
+		/* print message only when processing device capabilities */
+		if (dev_p)
+			dev_info(ice_hw_to_dev(hw),
+				 "RDMA functionality is not available with the current device configuration.\n");
 	}
 }
 
