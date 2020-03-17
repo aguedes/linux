@@ -344,4 +344,15 @@ config IGC
 	  To compile this driver as a module, choose M here. The module
 	  will be called igc.
 
+config INTEL_GSWIP
+	tristate "Intel(R) Gigabit Ethernet Switch IP support"
+	default n
+	depends on OF_MDIO
+	help
+	  Turn on this option to build GSWIP driver.
+	  Gigabit Ethernet Switch is a hardware IP in the
+	  Intel Networking SoCs. This driver consists of
+	  core and mac. It is part of the Intel gateway
+	  datapath architecture.
+
 endif # NET_VENDOR_INTEL
