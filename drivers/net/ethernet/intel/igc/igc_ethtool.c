@@ -6,6 +6,7 @@
 #include <linux/pm_runtime.h>
 
 #include "igc.h"
+#include "igc_diag.h"
 
 /* forward declaration */
 struct igc_stats {
@@ -1902,6 +1903,85 @@ static int igc_set_link_ksettings(struct net_device *netdev,
 	return 0;
 }
 
+static void igc_diag_test(struct net_device *netdev,
+			  struct ethtool_test *eth_test, u64 *data)
+{
+	struct igc_adapter *adapter = netdev_priv(netdev);
+	bool if_running = netif_running(netdev);
+
+	if (IGC_REMOVED(adapter->hw.hw_addr)) {
+		dev_err(&adapter->pdev->dev,
+			"Adapter removed - test blocked\n");
+		data[0] = 1;
+		data[1] = 1;
+		data[2] = 1;
+		data[3] = 1;
+		data[4] = 1;
+		eth_test->flags |= ETH_TEST_FL_FAILED;
+		return;
+	}
+	set_bit(__IGC_TESTING, &adapter->state);
+	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
+		/* Offline tests */
+		dev_info(&adapter->pdev->dev,
+			 "offline testing starting\n");
+
+		/* Link test performed before hardware reset so autoneg doesn't
+		 * interfere with test result
+		 */
+		if (igc_link_test(adapter, &data[4]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		if (if_running)
+			/* indicate we're in test mode */
+			igc_close(netdev);
+		else
+			igc_reset(adapter);
+
+		dev_info(&adapter->pdev->dev,
+			 "register testing starting\n");
+		if (igc_reg_test(adapter, &data[0]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		igc_reset(adapter);
+
+		dev_info(&adapter->pdev->dev,
+			 "eeprom testing starting\n");
+		if (igc_eeprom_test(adapter, &data[1]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		igc_reset(adapter);
+
+		dev_info(&adapter->pdev->dev,
+			 "interrupt testing starting\n");
+		if (igc_eeprom_test(adapter, &data[2]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		igc_reset(adapter);
+
+		/* loopback test will be implemented in the future */
+		data[3] = 0;
+
+		clear_bit(__IGC_TESTING, &adapter->state);
+		if (if_running)
+			igc_open(netdev);
+	} else {
+		dev_info(&adapter->pdev->dev,
+			 "online testing starting\n");
+
+		/* register, eeprom, intr and loopback tests not run online */
+		data[0] = 0;
+		data[1] = 0;
+		data[2] = 0;
+		data[3] = 0;
+
+		if (igc_link_test(adapter, &data[4]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+	}
+
+	msleep_interruptible(4 * 1000);
+}
+
 static const struct ethtool_ops igc_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
 	.get_drvinfo		= igc_get_drvinfo,
@@ -1939,6 +2019,7 @@ static const struct ethtool_ops igc_ethtool_ops = {
 	.complete		= igc_ethtool_complete,
 	.get_link_ksettings	= igc_get_link_ksettings,
 	.set_link_ksettings	= igc_set_link_ksettings,
+	.self_test		= igc_diag_test,
 };
 
 void igc_set_ethtool_ops(struct net_device *netdev)
