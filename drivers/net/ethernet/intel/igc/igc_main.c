@@ -2210,8 +2210,8 @@ static bool igc_mac_entry_can_be_used(const struct igc_mac_addr *entry,
  *
  * In case of success, returns 0. Otherwise, it returns a negative errno code.
   */
-static int igc_add_mac_filter(struct igc_adapter *adapter, const u8 *addr,
-			      const s8 queue, const u8 flags)
+int igc_add_mac_filter(struct igc_adapter *adapter, const u8 *addr,
+		       const s8 queue, const u8 flags)
 {
 	struct igc_hw *hw = &adapter->hw;
 	int rar_entries = hw->mac.rar_entry_count;
@@ -2251,8 +2251,8 @@ static int igc_add_mac_filter(struct igc_adapter *adapter, const u8 *addr,
  *
  * In case of success, returns 0. Otherwise, it returns a negative errno code.
   */
-static int igc_del_mac_filter(struct igc_adapter *adapter, const u8 *addr,
-			      const u8 flags)
+int igc_del_mac_filter(struct igc_adapter *adapter, const u8 *addr,
+		       const u8 flags)
 {
 	struct igc_hw *hw = &adapter->hw;
 	int rar_entries = hw->mac.rar_entry_count;
@@ -3734,18 +3734,6 @@ igc_features_check(struct sk_buff *skb, struct net_device *dev,
 		features &= ~NETIF_F_TSO;
 
 	return features;
-}
-
-int igc_add_mac_steering_filter(struct igc_adapter *adapter,
-				const u8 *addr, u8 queue, u8 flags)
-{
-	return igc_add_mac_filter(adapter, addr, queue, flags);
-}
-
-int igc_del_mac_steering_filter(struct igc_adapter *adapter,
-				const u8 *addr, u8 queue, u8 flags)
-{
-	return igc_del_mac_filter(adapter, addr, flags);
 }
 
 static void igc_tsync_interrupt(struct igc_adapter *adapter)
