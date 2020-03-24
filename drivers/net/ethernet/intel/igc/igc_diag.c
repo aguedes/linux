@@ -46,9 +46,9 @@ static bool reg_pattern_test(struct igc_adapter *adapter, u64 *data, int reg,
 		wr32(reg, test_pattern[pat] & write);
 		val = rd32(reg);
 		if (val != (test_pattern[pat] & write & mask)) {
-			dev_err(&adapter->pdev->dev,
-				"pattern test reg %04X failed: got 0x%08X expected 0x%08X\n",
-				reg, val, test_pattern[pat] & write & mask);
+			netdev_err(adapter->netdev,
+				   "pattern test reg %04X failed: got 0x%08X expected 0x%08X",
+				   reg, val, test_pattern[pat] & write & mask);
 			*data = reg;
 			wr32(reg, before);
 			return true;
@@ -68,9 +68,9 @@ static bool reg_set_and_check(struct igc_adapter *adapter, u64 *data, int reg,
 	wr32(reg, write & mask);
 	val = rd32(reg);
 	if ((write & mask) != (val & mask)) {
-		dev_err(&adapter->pdev->dev,
-			"set/check reg %04X test failed: got 0x%08X expected 0x%08X\n",
-			reg, (val & mask), (write & mask));
+		netdev_err(adapter->netdev,
+			   "set/check reg %04X test failed: got 0x%08X expected 0x%08X",
+			   reg, (val & mask), (write & mask));
 		*data = reg;
 		wr32(reg, before);
 		return true;
@@ -97,9 +97,9 @@ bool igc_reg_test(struct igc_adapter *adapter, u64 *data)
 	wr32(IGC_STATUS, toggle);
 	after = rd32(IGC_STATUS) & toggle;
 	if (value != after) {
-		dev_err(&adapter->pdev->dev,
-			"failed STATUS register test got: 0x%08X expected: 0x%08X\n",
-			after, value);
+		netdev_err(adapter->netdev,
+			   "failed STATUS register test got: 0x%08X expected: 0x%08X",
+			   after, value);
 		*data = 1;
 		return true;
 	}
@@ -207,8 +207,8 @@ int igc_intr_test(struct igc_adapter *adapter, u64 *data)
 		*data = 1;
 		return -1;
 	}
-	dev_info(&adapter->pdev->dev, "testing %s interrupt\n",
-		 (shared_int ? "shared" : "unshared"));
+	netdev_info(adapter->netdev, "testing %s interrupt",
+		    (shared_int ? "shared" : "unshared"));
 
 	/* Disable all the interrupts */
 	wr32(IGC_IMC, ~0);
