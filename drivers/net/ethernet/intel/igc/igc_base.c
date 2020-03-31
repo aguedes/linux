@@ -26,9 +26,9 @@ static s32 igc_reset_hw_base(struct igc_hw *hw)
 	 */
 	ret_val = igc_disable_pcie_master(hw);
 	if (ret_val)
-		hw_dbg("PCI-E Master disable polling has failed.\n");
+		hw_dbg("PCI-E Master disable polling has failed");
 
-	hw_dbg("Masking off all interrupts\n");
+	hw_dbg("Masking off all interrupts");
 	wr32(IGC_IMC, 0xffffffff);
 
 	wr32(IGC_RCTL, 0);
@@ -39,7 +39,7 @@ static s32 igc_reset_hw_base(struct igc_hw *hw)
 
 	ctrl = rd32(IGC_CTRL);
 
-	hw_dbg("Issuing a global reset to MAC\n");
+	hw_dbg("Issuing a global reset to MAC");
 	wr32(IGC_CTRL, ctrl | IGC_CTRL_DEV_RST);
 
 	ret_val = igc_get_auto_rd_done(hw);
@@ -48,7 +48,7 @@ static s32 igc_reset_hw_base(struct igc_hw *hw)
 		 * return with an error. This can happen in situations
 		 * where there is no eeprom and prevents getting link.
 		 */
-		hw_dbg("Auto Read Done did not complete\n");
+		hw_dbg("Auto Read Done did not complete");
 	}
 
 	/* Clear any pending interrupt events. */
@@ -177,7 +177,7 @@ static s32 igc_init_phy_params_base(struct igc_hw *hw)
 	 */
 	ret_val = hw->phy.ops.reset(hw);
 	if (ret_val) {
-		hw_dbg("Error resetting the PHY.\n");
+		hw_dbg("Error resetting the PHY");
 		goto out;
 	}
 
@@ -292,12 +292,12 @@ static s32 igc_init_hw_base(struct igc_hw *hw)
 	igc_init_rx_addrs(hw, rar_count);
 
 	/* Zero out the Multicast HASH table */
-	hw_dbg("Zeroing the MTA\n");
+	hw_dbg("Zeroing the MTA");
 	for (i = 0; i < mac->mta_reg_count; i++)
 		array_wr32(IGC_MTA, i, 0);
 
 	/* Zero out the Unicast HASH table */
-	hw_dbg("Zeroing the UTA\n");
+	hw_dbg("Zeroing the UTA");
 	for (i = 0; i < mac->uta_reg_count; i++)
 		array_wr32(IGC_UTA, i, 0);
 
@@ -367,7 +367,7 @@ void igc_rx_fifo_flush_base(struct igc_hw *hw)
 	}
 
 	if (ms_wait == 10)
-		pr_debug("Queue disable timed out after 10ms\n");
+		hw_dbg("Queue disable timed out after 10ms");
 
 	/* Clear RLPML, RCTL.SBP, RFCTL.LEF, and set RCTL.LPE so that all
 	 * incoming packets are rejected.  Set enable and wait 2ms so that
