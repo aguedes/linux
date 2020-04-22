@@ -63,7 +63,7 @@ s32 igc_acquire_nvm(struct igc_hw *hw)
 	if (!timeout) {
 		eecd &= ~IGC_EECD_REQ;
 		wr32(IGC_EECD, eecd);
-		hw_dbg("Could not acquire NVM grant\n");
+		hw_dbg("Could not acquire NVM grant");
 		ret_val = -IGC_ERR_NVM;
 	}
 
@@ -105,7 +105,7 @@ s32 igc_read_nvm_eerd(struct igc_hw *hw, u16 offset, u16 words, u16 *data)
 	 */
 	if (offset >= nvm->word_size || (words > (nvm->word_size - offset)) ||
 	    words == 0) {
-		hw_dbg("nvm parameter(s) out of bounds\n");
+		hw_dbg("nvm parameter(s) out of bounds");
 		ret_val = -IGC_ERR_NVM;
 		goto out;
 	}
@@ -167,14 +167,14 @@ s32 igc_validate_nvm_checksum(struct igc_hw *hw)
 	for (i = 0; i < (NVM_CHECKSUM_REG + 1); i++) {
 		ret_val = hw->nvm.ops.read(hw, i, 1, &nvm_data);
 		if (ret_val) {
-			hw_dbg("NVM Read Error\n");
+			hw_dbg("NVM Read Error");
 			goto out;
 		}
 		checksum += nvm_data;
 	}
 
 	if (checksum != (u16)NVM_SUM) {
-		hw_dbg("NVM Checksum Invalid\n");
+		hw_dbg("NVM Checksum Invalid");
 		ret_val = -IGC_ERR_NVM;
 		goto out;
 	}
@@ -200,7 +200,7 @@ s32 igc_update_nvm_checksum(struct igc_hw *hw)
 	for (i = 0; i < NVM_CHECKSUM_REG; i++) {
 		ret_val = hw->nvm.ops.read(hw, i, 1, &nvm_data);
 		if (ret_val) {
-			hw_dbg("NVM Read Error while updating checksum.\n");
+			hw_dbg("NVM Read Error while updating checksum");
 			goto out;
 		}
 		checksum += nvm_data;
@@ -208,7 +208,7 @@ s32 igc_update_nvm_checksum(struct igc_hw *hw)
 	checksum = (u16)NVM_SUM - checksum;
 	ret_val = hw->nvm.ops.write(hw, NVM_CHECKSUM_REG, 1, &checksum);
 	if (ret_val)
-		hw_dbg("NVM Write Error while updating checksum.\n");
+		hw_dbg("NVM Write Error while updating checksum");
 
 out:
 	return ret_val;
