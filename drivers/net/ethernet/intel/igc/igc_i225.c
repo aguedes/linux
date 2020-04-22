@@ -71,7 +71,7 @@ static s32 igc_get_hw_semaphore_i225(struct igc_hw *hw)
 
 		/* If we do not have the semaphore here, we have to give up. */
 		if (i == timeout) {
-			hw_dbg("Driver can't access device - SMBI bit is set.\n");
+			hw_dbg("Driver can't access device - SMBI bit is set");
 			return -IGC_ERR_NVM;
 		}
 	}
@@ -91,7 +91,7 @@ static s32 igc_get_hw_semaphore_i225(struct igc_hw *hw)
 	if (i == timeout) {
 		/* Release semaphores */
 		igc_put_hw_semaphore(hw);
-		hw_dbg("Driver can't access the NVM\n");
+		hw_dbg("Driver can't access the NVM");
 		return -IGC_ERR_NVM;
 	}
 
@@ -131,7 +131,7 @@ s32 igc_acquire_swfw_sync_i225(struct igc_hw *hw, u16 mask)
 	}
 
 	if (i == timeout) {
-		hw_dbg("Driver can't access resource, SW_FW_SYNC timeout.\n");
+		hw_dbg("Driver can't access resource, SW_FW_SYNC timeout");
 		ret_val = -IGC_ERR_SWFW_SYNC;
 		goto out;
 	}
@@ -228,7 +228,7 @@ static s32 igc_write_nvm_srwr(struct igc_hw *hw, u16 offset, u16 words,
 	 */
 	if (offset >= nvm->word_size || (words > (nvm->word_size - offset)) ||
 	    words == 0) {
-		hw_dbg("nvm parameter(s) out of bounds\n");
+		hw_dbg("nvm parameter(s) out of bounds");
 		ret_val = -IGC_ERR_NVM;
 		goto out;
 	}
@@ -250,7 +250,7 @@ static s32 igc_write_nvm_srwr(struct igc_hw *hw, u16 offset, u16 words,
 		}
 
 		if (ret_val) {
-			hw_dbg("Shadow RAM write EEWR timed out\n");
+			hw_dbg("Shadow RAM write EEWR timed out");
 			break;
 		}
 	}
@@ -369,7 +369,7 @@ static s32 igc_update_flash_i225(struct igc_hw *hw)
 
 	ret_val = igc_pool_flash_update_done_i225(hw);
 	if (ret_val == -IGC_ERR_NVM) {
-		hw_dbg("Flash update time out\n");
+		hw_dbg("Flash update time out");
 		goto out;
 	}
 
@@ -378,9 +378,9 @@ static s32 igc_update_flash_i225(struct igc_hw *hw)
 
 	ret_val = igc_pool_flash_update_done_i225(hw);
 	if (ret_val)
-		hw_dbg("Flash update time out\n");
+		hw_dbg("Flash update time out");
 	else
-		hw_dbg("Flash update complete\n");
+		hw_dbg("Flash update complete");
 
 out:
 	return ret_val;
@@ -406,7 +406,7 @@ static s32 igc_update_nvm_checksum_i225(struct igc_hw *hw)
 	 */
 	ret_val = igc_read_nvm_eerd(hw, 0, 1, &nvm_data);
 	if (ret_val) {
-		hw_dbg("EEPROM read failed\n");
+		hw_dbg("EEPROM read failed");
 		goto out;
 	}
 
@@ -423,7 +423,7 @@ static s32 igc_update_nvm_checksum_i225(struct igc_hw *hw)
 		ret_val = igc_read_nvm_eerd(hw, i, 1, &nvm_data);
 		if (ret_val) {
 			hw->nvm.ops.release(hw);
-			hw_dbg("NVM Read Error while updating checksum.\n");
+			hw_dbg("NVM Read Error while updating checksum");
 			goto out;
 		}
 		checksum += nvm_data;
@@ -433,7 +433,7 @@ static s32 igc_update_nvm_checksum_i225(struct igc_hw *hw)
 				     &checksum);
 	if (ret_val) {
 		hw->nvm.ops.release(hw);
-		hw_dbg("NVM Write Error while updating checksum.\n");
+		hw_dbg("NVM Write Error while updating checksum");
 		goto out;
 	}
 
