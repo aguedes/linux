@@ -1,0 +1,236 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (c) 2016-2019 Intel Corporation. */
+/* Xgmac registers indirect access */
+
+#ifndef _XGMAC_H
+#define _XGMAC_H
+
+#include <linux/bits.h>
+
+/* MAC register offsets */
+#define MAC_TX_CFG			0x0000
+#define MAC_TX_CFG_TE			BIT(0)
+#define MAC_TX_CFG_DDIC			BIT(1)
+#define MAC_TX_CFG_ISM			BIT(3)
+#define MAC_TX_CFG_ISR			GENMASK(7, 4)
+#define MAC_TX_CFG_IPG			GENMASK(10, 8)
+#define MAC_TX_CFG_IFP			BIT(11)
+#define MAC_TX_CFG_JD			BIT(16)
+#define MAC_TX_CFG_SARC			GENMASK(22, 20)
+#define MAC_TX_CFG_VNE			BIT(24)
+#define MAC_TX_CFG_VNM			BIT(25)
+#define MAC_TX_CFG_G9991EN		BIT(28)
+#define MAC_TX_CFG_SS			GENMASK(30, 29)
+#define MAC_TX_CFG_USS			BIT(31)
+
+#define MAC_RX_CFG			0x0004
+#define MAC_RX_CFG_RE			BIT(0)
+#define MAC_RX_CFG_ACS			BIT(1)
+#define MAC_RX_CFG_CST			BIT(2)
+#define MAC_RX_CFG_DCRCC		BIT(3)
+#define MAC_RX_CFG_SPEN			BIT(4)
+#define MAC_RX_CFG_USP			BIT(5)
+#define MAC_RX_CFG_GPSLCE		BIT(6)
+#define MAC_RX_CFG_WD			BIT(7)
+#define MAC_RX_CFG_JE			BIT(8)
+#define MAC_RX_CFG_IPC			BIT(9)
+#define MAC_RX_CFG_LM			BIT(10)
+#define MAC_RX_CFG_S2KP			BIT(11)
+#define MAC_RX_CFG_HDSMS		GENMASK(14, 12)
+#define MAC_RX_CFG_GPSL			GENMASK(29, 16)
+#define MAC_RX_CFG_ELEN			BIT(30)
+#define MAC_RX_CFG_ARPEN		BIT(31)
+
+#define MAC_PKT_FR			0x0008
+#define MAC_PKT_FR_PR			BIT(0)
+#define MAC_PKT_FR_HUC			BIT(1)
+#define MAC_PKT_FR_HMC			BIT(2)
+#define MAC_PKT_FR_DAIF			BIT(3)
+#define MAC_PKT_FR_PM			BIT(4)
+#define MAC_PKT_FR_DBF			BIT(5)
+#define MAC_PKT_FR_PCF			GENMASK(7, 6)
+#define MAC_PKT_FR_SAIF			BIT(8)
+#define MAC_PKT_FR_SAF			BIT(9)
+#define MAC_PKT_FR_HPF			BIT(10)
+#define MAC_PKT_FR_VTFE			BIT(16)
+#define MAC_PKT_FR_IPFE			BIT(20)
+#define MAC_PKT_FR_DNTU			BIT(21)
+#define MAC_PKT_FR_VUCC			BIT(22)
+#define MAC_PKT_FR_RA			BIT(31)
+#define MAC_TX_FCR			0x0070
+#define MAC_TX_FCR_FCB			BIT(0)
+#define MAC_TX_FCR_TFE			BIT(1)
+#define MAC_TX_FCR_PLT			GENMASK(6, 4)
+#define MAC_TX_FCR_DZPQ			BIT(7)
+#define MAC_TX_FCR_PT			GENMASK(31, 16)
+
+#define MAC_TX_FCR1			0x0074
+#define MAC_TX_FCR2			0x0078
+#define MAC_TX_FCR3			0x007C
+#define MAC_TX_FCR4			0x0080
+#define MAC_TX_FCR5			0x0084
+#define MAC_TX_FCR6			0x0088
+#define MAC_TX_FCR7			0x008C
+#define MAC_RX_FCR			0x0090
+#define MAC_RX_FCR_RFE			BIT(0)
+#define MAC_RX_FCR_UP			BIT(1)
+#define MAC_RX_FCR_PFCE			BIT(8)
+
+#define MAC_ISR				0x00b0
+#define MAC_IER				0x00b4
+#define MAC_RXTX_STS			0x00b8
+#define MAC_PMT_CSR			0x00c0
+#define MAC_RWK_PFR			0x00c4
+#define MAC_LPI_CSR			0x00d0
+#define MAC_LPI_CSR_TLPIEN		BIT(0)
+#define MAC_LPI_CSR_TLPIEX		BIT(1)
+#define MAC_LPI_CSR_RLPIEN		BIT(2)
+#define MAC_LPI_CSR_RLPIEX		BIT(3)
+#define MAC_LPI_CSR_TLPIST		BIT(8)
+#define MAC_LPI_CSR_RLPIST		BIT(9)
+#define MAC_LPI_CSR_RXRSTP		BIT(10)
+#define MAC_LPI_CSR_TXRSTP		BIT(11)
+#define MAC_LPI_CSR_LPITXEN		BIT(16)
+#define MAC_LPI_CSR_PLS			BIT(17)
+#define MAC_LPI_CSR_PLSDIS		BIT(18)
+#define MAC_LPI_CSR_LPITXA		BIT(19)
+#define MAC_LPI_CSR_LPIATE		BIT(20)
+#define MAC_LPI_CSR_TXCGE		BIT(21)
+
+#define MAC_LPI_TCR			0x00d4
+#define MAC_VER				0x0110
+#define MAC_VER_USERVER			GENMASK(23, 16)
+
+#define MAC_HW_F0			0x011c
+#define MAC_HW_F0_GMIISEL		BIT(1)
+#define MAC_HW_F0_VLHASH		BIT(4)
+#define MAC_HW_F0_SMASEL		BIT(5)
+#define MAC_HW_F0_RWKSEL		BIT(6)
+#define MAC_HW_F0_MGKSEL		BIT(7)
+#define MAC_HW_F0_MMCSEL		BIT(8)
+#define MAC_HW_F0_ARPOFFSEL		BIT(9)
+#define MAC_HW_F0_TSSEL			BIT(12)
+#define MAC_HW_F0_EEESEL		BIT(13)
+#define MAC_HW_F0_TXCOESEL		BIT(14)
+#define MAC_HW_F0_RXCOESEL		BIT(16)
+#define MAC_HW_F0_ADDMACADRSEL		GENMASK(22, 18)
+#define MAC_HW_F0_TSSTSSEL		GENMASK(26, 25)
+#define MAC_HW_F0_SAVLANINS		BIT(27)
+#define MAC_HW_F0_VXN			BIT(29)
+#define MAC_HW_F0_EDIFFC		BIT(30)
+#define MAC_HW_F0_EDMA			BIT(31)
+
+#define MAC_HW_F1			0x0120
+#define MAC_HW_F1_RXFIFOSIZE		GENMASK(4, 0)
+#define MAC_HW_F1_TXFIFOSIZE		GENMASK(10, 6)
+#define MAC_HW_F1_OSTEN			BIT(11)
+#define MAC_HW_F1_PTOEN			BIT(12)
+#define MAC_HW_F1_ADVTHWORD		BIT(13)
+#define MAC_HW_F1_ADDR64		GENMASK(15, 14)
+#define MAC_HW_F1_DCBEN			BIT(16)
+#define MAC_HW_F1_SPHEN			BIT(17)
+#define MAC_HW_F1_TSOEN			BIT(18)
+#define MAC_HW_F1_DBGMEMA		BIT(19)
+#define MAC_HW_F1_RSSEN			BIT(20)
+#define MAC_HW_F1_NUMTC			GENMASK(23, 21)
+#define MAC_HW_F1_HASHTBLSZ		GENMASK(25, 24)
+#define MAC_HW_F1_L3L4FNUM		GENMASK(30, 27)
+
+#define MAC_HW_F2			0x0124
+#define MAC_HW_F2_RXQCNT		GENMASK(3, 0)
+#define MAC_HW_F2_TXQCNT		GENMASK(9, 6)
+#define MAC_HW_F2_RXCHCNT		GENMASK(15, 12)
+#define MAC_HW_F2_TXCHCNT		GENMASK(21, 18)
+#define MAC_HW_F2_PPSOUTNUM		GENMASK(26, 24)
+#define MAC_HW_F2_AUXSNAPNUM		GENMASK(30, 28)
+
+#define MAC_EXTCFG			0x0140
+#define MAC_EXTCFG_SBDIOEN		BIT(8)
+
+#define MDIO_SCAR			0x200
+#define MDIO_SCAR_RA			GENMASK(15, 0)
+#define MDIO_SCAR_PA			GENMASK(20, 16)
+#define MDIO_SCAR_DA			GENMASK(25, 21)
+
+#define MDIO_SCCDR			0x204
+#define MDIO_SCCDR_SDATA		GENMASK(15, 0)
+#define MDIO_SCCDR_CMD			GENMASK(17, 16)
+#define MDIO_SCCDR_SADDR		BIT(18)
+#define MDIO_SCCDR_CR			GENMASK(21, 19)
+#define MDIO_SCCDR_BUSY			BIT(22)
+
+#define MDIO_C22P			0x220
+#define MDIO_C22P_PORT(idx)		BIT(idx)
+
+#define MAC_MACA0HR			0x0300
+#define MAC_MACA0LR			0x0304
+#define MAC_MACA1HR			0x0308
+#define MAC_MACA1LR			0x030c
+
+#define MMC_CR				0x0800
+
+#define MMC_TXOCTETCOUNT_GB_LO		0x0814
+#define MMC_TXFRAMECOUNT_GB_LO		0x081c
+#define MMC_TXBROADCASTFRAMES_G_LO	0x0824
+#define MMC_TXMULTICASTFRAMES_G_LO	0x082c
+#define MMC_TXUNICASTFRAMES_GB_LO	0x0864
+#define MMC_TXMULTICASTFRAMES_GB_LO	0x086c
+#define MMC_TXBROADCASTFRAMES_GB_LO	0x0874
+#define MMC_TXUNDERFLOWERROR_LO		0x087c
+#define MMC_TXOCTETCOUNT_G_LO		0x0884
+#define MMC_TXFRAMECOUNT_G_LO		0x088c
+#define MMC_TXPAUSEFRAMES_LO		0x0894
+#define MMC_TXVLANFRAMES_G_LO		0x089c
+
+#define MMC_RXFRAMECOUNT_GB_LO		0x0900
+#define MMC_RXOCTETCOUNT_GB_LO		0x0908
+#define MMC_RXOCTETCOUNT_G_LO		0x0910
+#define MMC_RXBROADCASTFRAMES_G_LO	0x0918
+#define MMC_RXMULTICASTFRAMES_G_LO	0x0920
+#define MMC_RXCRCERROR_LO		0x0928
+#define MMC_RXRUNTERROR			0x0930
+#define MMC_RXJABBERERROR		0x0934
+#define MMC_RXUNDERSIZE_G		0x0938
+#define MMC_RXOVERSIZE_G		0x093c
+#define MMC_RXUNICASTFRAMES_G_LO	0x0970
+#define MMC_RXLENGTHERROR_LO		0x0978
+#define MMC_RXOUTOFRANGETYPE_LO		0x0980
+#define MMC_RXPAUSEFRAMES_LO		0x0988
+#define MMC_RXFIFOOVERFLOW_LO		0x0990
+#define MMC_RXVLANFRAMES_GB_LO		0x0998
+#define MMC_RXWATCHDOGERROR		0x09a0
+
+#define MAC_TSTAMP_CR			0x0d00
+#define MAC_SUBSEC_INCR			0x0d04
+#define MAC_SYS_TIME_SEC		0x0d08
+#define MAC_SYS_TIME_NSEC		0x0d0c
+#define MAC_SYS_TIME_SEC_UPD		0x0d10
+#define MAC_SYS_TIME_NSEC_UPD		0x0d14
+#define MAC_TSTAMP_ADDNDR		0x0d18
+#define MAC_TSTAMP_STSR			0x0d20
+#define MAC_TXTSTAMP_NSECR		0x0d30
+#define MAC_TXTSTAMP_SECR		0x0d34
+#define MAC_TXTSTAMP_STS		0x0d38
+#define MAC_AUX_CTRL			0x0d40
+#define MAC_AUX_NSEC			0x0d48
+#define MAC_AUX_SEC			0x0d4c
+#define MAC_RX_PCH_CRC_CNT		0x0d2c
+
+#define XGMAC_Q_INC			0x100
+#define XGMAC_CTRL_REG(idx)					\
+	(XGMAC_REGACC_CTRL + ((idx) - MAC2) * XGMAC_Q_INC)
+#define XGMAC_DATA0_REG(idx)					\
+	(XGMAC_REGACC_DATA0 + ((idx) - MAC2) * XGMAC_Q_INC)
+#define XGMAC_DATA1_REG(idx)					\
+	(XGMAC_REGACC_DATA1 + ((idx) - MAC2) * XGMAC_Q_INC)
+
+#define MASK_LOW			GENMASK(15, 0)
+#define MASK_HIGH			GENMASK(31, 16)
+
+/* gaint packet size limit */
+#define XGMAC_MAX_GPSL			9000
+#define XGMAC_MAX_SUPPORTED_MTU		16380
+
+#define XGMAC_MAX_STD_PACKET		1518
+
+#endif

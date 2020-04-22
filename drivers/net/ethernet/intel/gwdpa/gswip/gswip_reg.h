@@ -1,0 +1,491 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (c) 2016-2019 Intel Corporation.
+ *
+ * GSWIP-O Top and Legacy MAC Register Description.
+ */
+#ifndef _GSWIP_REG_H
+#define _GSWIP_REG_H
+
+#define ETHSW_CAP_1			0x001c
+#define ETHSW_CAP_1_PPORTS		GENMASK(3, 0)
+#define ETHSW_CAP_1_VPORTS		GENMASK(7, 4)
+#define ETHSW_CAP_1_QUEUE		GENMASK(14, 8)
+#define ETHSW_CAP_1_GMAC		BIT(15)
+
+#define ETHSW_VERSION			0x004c
+#define ETHSW_VERSION_REV_ID		GENMASK(7, 0)
+#define ETHSW_VERSION_MOD_ID		GENMASK(15, 8)
+
+#define ETHSW_CAP_13			0x0058
+#define ETHSW_CAP_13_EVLAN		GENMASK(3, 0)
+#define ETHSW_CAP_13_INTRMON		GENMASK(7, 4)
+#define ETHSW_CAP_13_PAYLOAD		GENMASK(11, 8)
+#define ETHSW_CAP_13_PMAC		GENMASK(15, 12)
+
+#define ETHSW_CAP_17			0x0068
+#define ETHSW_CAP_17_BRGPT		GENMASK(3, 0)
+#define ETHSW_CAP_17_BRG		GENMASK(7, 4)
+#define ETHSW_CAP_17_PMAP		GENMASK(11, 8)
+
+#define ETHSW_CAP_18			0x006c
+#define ETHSW_CAP_18_CTP		GENMASK(15, 0)
+
+#define BM_RAM_VAL_OFFSET		4
+#define BM_RAM_VAL_0			0x010c
+#define BM_RAM_VAL_0_VAL0		GENMASK(15, 0)
+
+#define BM_RAM_ADDR			0x0110
+#define BM_RAM_ADDR_ADDR		GENMASK(15, 0)
+
+#define BM_RAM_CTRL			0x0114
+#define BM_RAM_CTRL_ADDR		GENMASK(4, 0)
+#define BM_RAM_CTRL_OPMOD		BIT(5)
+#define BM_RAM_CTRL_RMON		BIT(6)
+#define BM_RAM_CTRL_BAS			BIT(15)
+
+#define BM_RMON_GCTRL			0x0188
+#define BM_RMON_GCTRL_METER_RES		BIT(1)
+#define BM_RMON_GCTRL_ALLITF_RES	BIT(2)
+#define BM_RMON_GCTRL_INT_RES		BIT(3)
+#define BM_RMON_GCTRL_ITFID		GENMASK(11, 4)
+#define BM_RMON_GCTRL_PMAC_RES		BIT(12)
+#define BM_RMON_GCTRL_MRMON		BIT(14)
+#define BM_RMON_GCTRL_INTMON		BIT(15)
+
+#define BM_PCFG_OFFSET			8
+#define BM_PCFG(x)			(0x0200 + BM_PCFG_OFFSET * (x))
+#define BM_PCFG_CNTEN			BIT(0)
+
+#define BM_RMON_CTRL_OFFSET		8
+#define BM_RMON_CTRL(x)			(0x0204 + BM_RMON_CTRL_OFFSET * (x))
+#define BM_RMON_CTRL_RAM1_RES		BIT(0)
+#define BM_RMON_CTRL_RAM2_RES		BIT(1)
+
+#define BM_PWRED_RTH_0_OFFSET		24
+#define BM_PWRED_RTH_0(x)		(0x0280 + BM_PWRED_RTH_0_OFFSET * (x))
+#define BM_PWRED_RTH_0_MINTH		GENMASK(9, 0)
+
+#define BM_PWRED_RTH_1_OFFSET		24
+#define BM_PWRED_RTH_1(x)		(0x0284 + BM_PWRED_RTH_1_OFFSET * (x))
+#define BM_PWRED_RTH_1_MAXTH		GENMASK(9, 0)
+
+#define BM_PWRED_YTH_0_OFFSET		24
+#define BM_PWRED_YTH_0(x)		(0x0288 + BM_PWRED_YTH_0_OFFSET * (x))
+#define BM_PWRED_YTH_0_MINTH		GENMASK(9, 0)
+
+#define BM_PWRED_YTH_1_OFFSET		24
+#define BM_PWRED_YTH_1(x)		(0x028c + BM_PWRED_YTH_1_OFFSET * (x))
+#define BM_PWRED_YTH_1_MAXTH		GENMASK(9, 0)
+
+#define BM_PWRED_GTH_0_OFFSET		24
+#define BM_PWRED_GTH_0(x)		(0x0290 + BM_PWRED_GTH_0_OFFSET * (x))
+#define BM_PWRED_GTH_0_MINTH		GENMASK(9, 0)
+
+#define BM_PWRED_GTH_1_OFFSET		24
+#define BM_PWRED_GTH_1(x)		(0x0294 + BM_PWRED_GTH_1_OFFSET * (x))
+#define BM_PWRED_GTH_1_MAXTH		GENMASK(9, 0)
+
+#define PCE_TBL_VAL_30			0x1014
+#define PCE_TBL_VAL_29			0x1018
+#define PCE_TBL_VAL_28			0x101c
+#define PCE_TBL_VAL_27			0x1020
+#define PCE_TBL_VAL_26			0x1024
+
+#define PCE_TBL_KEY_33			0x1038
+#define PCE_TBL_KEY_32			0x103c
+#define PCE_TBL_KEY_31			0x1040
+#define PCE_TBL_KEY_30			0x1044
+#define PCE_TBL_KEY_29			0x1048
+#define PCE_TBL_KEY_28			0x104c
+#define PCE_TBL_KEY_27			0x1050
+#define PCE_TBL_KEY_26			0x1054
+#define PCE_TBL_KEY_25			0x1058
+#define PCE_TBL_KEY_24			0x105c
+#define PCE_TBL_KEY_23			0x1060
+#define PCE_TBL_KEY_22			0x1064
+#define PCE_TBL_KEY_21			0x1068
+#define PCE_TBL_KEY_20			0x106c
+#define PCE_TBL_KEY_19			0x1070
+#define PCE_TBL_KEY_18			0x1074
+#define PCE_TBL_KEY_17			0x1078
+#define PCE_TBL_KEY_16			0x107c
+
+#define PCE_TBL_VAL_25			0x1080
+#define PCE_TBL_VAL_24			0x1084
+#define PCE_TBL_VAL_23			0x1088
+#define PCE_TBL_VAL_22			0x108c
+#define PCE_TBL_VAL_21			0x1090
+#define PCE_TBL_VAL_20			0x1094
+#define PCE_TBL_VAL_19			0x1098
+#define PCE_TBL_VAL_18			0x109c
+#define PCE_TBL_VAL_17			0x10a0
+#define PCE_TBL_VAL_16			0x10a4
+
+#define PCE_TBL_MASK_3			0x10a8
+#define PCE_TBL_MASK_2			0x10ac
+#define PCE_TBL_MASK_1			0x10b0
+
+#define PCE_TBL_VAL_15			0x10b4
+#define PCE_TBL_VAL_14			0x10b8
+#define PCE_TBL_VAL_13			0x10bc
+#define PCE_TBL_VAL_12			0x10c0
+#define PCE_TBL_VAL_11			0x10c4
+#define PCE_TBL_VAL_10			0x10c8
+#define PCE_TBL_VAL_9			0x10cc
+#define PCE_TBL_VAL_8			0x10d0
+#define PCE_TBL_VAL_7			0x10d4
+#define PCE_TBL_VAL_6			0x10d8
+#define PCE_TBL_VAL_5			0x10dc
+
+#define PCE_TBL_KEY_15			0x01e0
+#define PCE_TBL_KEY_14			0x10e4
+#define PCE_TBL_KEY_13			0x10e8
+#define PCE_TBL_KEY_12			0x10ec
+#define PCE_TBL_KEY_11			0x10f0
+#define PCE_TBL_KEY_10			0x10f4
+#define PCE_TBL_KEY_9			0x10f8
+#define PCE_TBL_KEY_8			0x10fc
+#define PCE_TBL_KEY_7			0x1100
+#define PCE_TBL_KEY_6			0x1104
+#define PCE_TBL_KEY_5			0x1108
+#define PCE_TBL_KEY_4			0x110c
+#define PCE_TBL_KEY_3			0x1110
+#define PCE_TBL_KEY_2			0x1114
+#define PCE_TBL_KEY_1			0x1118
+#define PCE_TBL_KEY_0			0x111c
+
+#define PCE_TBL_MASK_0			0x1120
+
+#define PCE_TBL_VAL_4			0x1124
+#define PCE_TBL_VAL_3			0x1128
+#define PCE_TBL_VAL_2			0x112c
+#define PCE_TBL_VAL_1			0x1130
+#define PCE_TBL_VAL_0			0x1134
+
+#define PCE_TBL_ADDR			0x1138
+#define PCE_TBL_ADDR_ADDR		GENMASK(11, 0)
+
+#define PCE_TBL_CTRL			0x113c
+#define PCE_TBL_CTRL_ADDR		GENMASK(4, 0)
+#define PCE_TBL_CTRL_OPMOD		GENMASK(6, 5)
+#define PCE_TBL_CTRL_GMAP		GENMASK(10, 7)
+#define PCE_TBL_CTRL_KEYFORM		BIT(11)
+#define PCE_TBL_CTRL_VLD		BIT(12)
+#define PCE_TBL_CTRL_TYPE		BIT(13)
+#define PCE_TBL_CTRL_EXTOP		BIT(14)
+#define PCE_TBL_CTRL_BAS		BIT(15)
+
+#define PCE_PCTRL_OFFSET		40
+#define PCE_PCTRL_0(x)			(0x1200 + PCE_PCTRL_OFFSET * (x))
+#define PCE_PCTRL_0_PSTATE		GENMASK(2, 0)
+#define PCE_PCTRL_0_AGEDIS		BIT(3)
+#define PCE_PCTRL_0_PLOCK		BIT(4)
+#define PCE_PCTRL_0_TVM			BIT(5)
+#define PCE_PCTRL_0_VREP		BIT(6)
+#define PCE_PCTRL_0_CMOD		BIT(7)
+#define PCE_PCTRL_0_DPEN		BIT(8)
+#define PCE_PCTRL_0_CLPEN		BIT(9)
+#define PCE_PCTRL_0_PCPEN		BIT(10)
+#define PCE_PCTRL_0_IGSTEN		BIT(11)
+#define PCE_PCTRL_0_EGSTEN		BIT(12)
+#define PCE_PCTRL_0_MCST		BIT(13)
+#define PCE_PCTRL_0_SPFDIS		BIT(14)
+#define PCE_PCTRL_0_MSTP		BIT(15)
+
+#define FDMA_PASR			0x291c
+#define FDMA_PASR_CPU			GENMASK(1, 0)
+#define FDMA_PASR_MPE1			GENMASK(3, 2)
+#define FDMA_PASR_MPE2			GENMASK(5, 4)
+#define FDMA_PASR_MPE3			GENMASK(7, 6)
+
+#define FDMA_PCTRL_OFFSET		24
+#define FDMA_PCTRL(x)			(0x2a00 + FDMA_PCTRL_OFFSET * (x))
+#define FDMA_PCTRL_EN			BIT(0)
+#define FDMA_PCTRL_STEN			BIT(1)
+#define FDMA_PCTRL_DSCPRM		BIT(2)
+#define FDMA_PCTRL_VLANMOD		BIT(3)
+#define FDMA_PCTRL_TS_PTP		BIT(4)
+#define FDMA_PCTRL_TS_NONPTP		BIT(5)
+#define FDMA_PCTRL_HEADER_SHORT		BIT(6)
+#define FDMA_PCTRL_VLANTPID		BIT(7)
+
+#define SDMA_PCTRL_OFFSET		24
+#define SDMA_PCTRL(x)			(0x2f00 + SDMA_PCTRL_OFFSET * (x))
+#define SDMA_PCTRL_PEN			BIT(0)
+#define SDMA_PCTRL_FCEN			BIT(1)
+#define SDMA_PCTRL_MFCEN		BIT(2)
+#define SDMA_PCTRL_PAUFWD		BIT(3)
+#define SDMA_PCTRL_FCSFWD		BIT(4)
+#define SDMA_PCTRL_FCSIGN		BIT(5)
+#define SDMA_PCTRL_USFWD		BIT(6)
+#define SDMA_PCTRL_OSFWD		BIT(7)
+#define SDMA_PCTRL_LENFWD		BIT(8)
+#define SDMA_PCTRL_ALGFWD		BIT(9)
+#define SDMA_PCTRL_PHYEFWD		BIT(10)
+#define SDMA_PCTRL_PTHR			GENMASK(12, 11)
+#define SDMA_PCTRL_DTHR			GENMASK(14, 13)
+
+#define SDMA_PRIO_OFFSET		24
+#define SDMA_PRIO(x)			(0x2f04 + SDMA_PRIO_OFFSET * (x))
+#define SDMA_PRIO_BIT10			GENMASK(1, 0)
+#define SDMA_PRIO_USIGN			BIT(2)
+#define SDMA_PRIO_OSIGN			BIT(3)
+#define SDMA_PRIO_LENIGN		BIT(4)
+#define SDMA_PRIO_ALGIGN		BIT(5)
+#define SDMA_PRIO_PHYEIGN		BIT(6)
+#define SDMA_PRIO_MIN_IFG		GENMASK(11, 7)
+
+#define SDMA_BYPASS_OFFSET		24
+#define SDMA_BYPASS(x)			(0x2f10 + SDMA_BYPASS_OFFSET * (x))
+#define SDMA_BYPASS_MD			BIT(0)
+#define SDMA_BYPASS_NMQID		GENMASK(5, 1)
+#define SDMA_BYPASS_EXTQID		GENMASK(10, 6)
+#define SDMA_BYPASS_PCEBYP		BIT(11)
+#define SDMA_BYPASS_IGMIR		BIT(12)
+#define SDMA_BYPASS_EGMIR		BIT(13)
+
+#define PMAC_CTRL_0			0x340c
+#define PMAC_CTRL_0_CHKVER		BIT(5)
+#define PMAC_CTRL_0_CHKREG		BIT(6)
+#define PMAC_CTRL_0_FCS			BIT(7)
+#define PMAC_CTRL_0_PADEN		BIT(8)
+#define PMAC_CTRL_0_VPADEN		BIT(9)
+#define PMAC_CTRL_0_VPAD2EN		BIT(10)
+#define PMAC_CTRL_0_APADEN		BIT(11)
+#define PMAC_CTRL_0_FCSEN		BIT(12)
+
+#define PMAC_CTRL_1			0x3410
+#define PMAC_CTRL_1_MLEN		GENMASK(13, 0)
+
+#define PMAC_CTRL_2			0x3414
+#define PMAC_CTRL_2_LCHKS		GENMASK(1, 0)
+#define PMAC_CTRL_2_LCHKL		BIT(2)
+#define PMAC_CTRL_2_MLEN		BIT(3)
+
+#define PMAC_CTRL_4			0x341c
+#define PMAC_CTRL_4_FLAGEN		GENMASK(1, 0)
+#define PMAC_RX_FSM_IDLE		0x00
+#define PMAC_RX_FSM_IGCFG		0x01
+#define PMAC_RX_FSM_DASA		0x10
+
+#define PMAC_CTRL_NUM			4
+
+#define PMAC_REG_OFFSET_1		0x200
+#define PMAC_REG_OFFSET_2		0x600
+
+#define	PMAC_BSL_LEN0			0x3440
+#define	PMAC_BSL_LEN0_LEN0		GENMASK(15, 0)
+
+#define	PMAC_BSL_LEN1			0x3444
+#define	PMAC_BSL_LEN1_LEN1		GENMASK(15, 0)
+
+#define	PMAC_BSL_LEN2			0x3448
+#define	PMAC_BSL_LEN2_LEN2		GENMASK(15, 0)
+
+#define PMAC_BSL_NUM			3
+
+#define PMAC_TBL_VAL_OFFSET		0x200
+#define PMAC_TBL_VAL(_x)		\
+				({ typeof(_x) (x) = (_x); \
+				(0x3510 + PMAC_TBL_VAL_OFFSET * (x) * (x)); })
+#define PMAC_TBL_VAL_0_VAL0		GENMASK(15, 0)
+
+#define PMAC_TBL_VAL_SFT		4
+
+#define PMAC_TBL_ADDR_OFFSET		0x200
+#define PMAC_TBL_ADDR(_x)		\
+				({ typeof(_x) (x) = (_x); \
+				(0x3514 + PMAC_TBL_ADDR_OFFSET * (x) * (x)); })
+#define PMAC_TBL_ADDR_ADDR		GENMASK(11, 0)
+
+#define PMAC_TBL_CTRL_OFFSET		0x200
+#define PMAC_TBL_CTRL(_x)		\
+				({ typeof(_x) (x) = (_x); \
+				(0x3518 + PMAC_TBL_CTRL_OFFSET * (x) * (x)); })
+#define PMAC_TBL_CTRL_ADDR		GENMASK(2, 0)
+#define PMAC_TBL_CTRL_OPMOD		BIT(5)
+#define PMAC_TBL_CTRL_BAS		BIT(15)
+
+#define ETHSW_CTP_STARTID_OFFSET	8
+#define ETHSW_CTP_STARTID(x)		\
+				(0x3a00 + ETHSW_CTP_STARTID_OFFSET * (x))
+#define ETHSW_CTP_STARTID_STARTID	GENMASK(8, 0)
+#define ETHSW_CTP_STARTID_MD		GENMASK(15, 14)
+#define MD_WLAN8			0
+#define MD_WLAN9			1
+#define MD_OTHER			2
+
+#define ETHSW_CTP_ENDID_0		0x3a04
+#define ETHSW_CTP_ENDID(x)		\
+			(ETHSW_CTP_ENDID_0 + ETHSW_CTP_STARTID_OFFSET * (x))
+#define ETHSW_CTP_ENDID_ENDID		GENMASK(8, 0)
+
+#define ETHSW_GPID_STARTID_OFFSET	8
+#define ETHSW_GPID_STARTID(x)		\
+				(0x3a80 + ETHSW_GPID_STARTID_OFFSET * (x))
+#define ETHSW_GPID_STARTID_BITS		GENMASK(14, 12)
+#define ETHSW_GPID_STARTID_STARTID	GENMASK(7, 0)
+
+#define ETHSW_GPID_ENDID_OFFSET		8
+#define ETHSW_GPID_ENDID(x)		\
+				(0x3a84 + ETHSW_GPID_ENDID_OFFSET * (x))
+#define ETHSW_GPID_ENDID_ENDID		GENMASK(8, 0)
+
+#define GPID_RAM_VAL			0x3b00
+#define GPID_RAM_VAL_OV			BIT(15)
+#define GPID_RAM_VAL_SUBID_GRP		GENMASK(11, 4)
+#define GPID_RAM_VAL_LPID		GENMASK(3, 0)
+
+#define GPID_RAM_CTRL			0x3b04
+#define GPID_RAM_CTRL_BAS		BIT(15)
+#define GPID_RAM_CTRL_OPMOD		BIT(8)
+#define GPID_RAM_CTRL_ADDR		GENMASK(7, 0)
+
+/** GSWIP-O Top Register Description **/
+#define GSWIP_CFG			0x0000
+#define GSWIP_CFG_SS_HWRES_ON		BIT(1)
+#define GSWIP_CFG_CLK_MD		GENMASK(3, 2)
+#define GSWIP_CFG_CLK_MUX_SEL		GENMASK(12, 11)
+#define GSWIP_CFG_CORE_SE_EN		BIT(15)
+
+#define MACSEC_EN			0x0008
+#define GSWIPSS_IER0			0x0010
+
+#define GSWIPSS_ISR0			0x0014
+#define GSWIPSS_I_XGMAC2		BIT(2)
+#define GSWIPSS_I_XGMAC3		BIT(3)
+#define GSWIPSS_I_XGMAC4		BIT(4)
+#define GSWIPSS_I_XGMAC5		BIT(5)
+#define GSWIPSS_I_XGMAC6		BIT(6)
+#define GSWIPSS_I_XGMAC7		BIT(7)
+#define GSWIPSS_I_XGMAC8		BIT(8)
+#define GSWIPSS_I_XGMAC9		BIT(9)
+#define GSWIPSS_I_XGMAC10		BIT(10)
+
+#define GSWIPSS_IER1			0x0018
+#define GSWIPSS_ISR1			0x001c
+#define GSWIPSS_SPTAG_ETYPE		0x0038
+#define GSWIPSS_1588_CFG0		0x0050
+#define GSWIPSS_1588_CFG1		0x0054
+#define GSWIPSS_NCO1_LSB		0x0060
+#define GSWIPSS_NCO1_USB		0x0064
+#define GSWIPSS_NCO2_LSB		0x0068
+#define GSWIPSS_NC02_MSB		0x006c
+#define GSWIPSS_NCO3_LSB		0x0070
+#define GSWIPSS_NCO3_MSB		0x0074
+#define GSWIPSS_NC04_LSB		0x0078
+#define GSWIPSS_NC04_MSB		0x007c
+#define GSWIP_MEMLS0			0x0080
+#define GSWIP_MEMLS1			0x0084
+
+/* GSWIP-O Top: MAC Registers */
+#define MAC_IF_CFG			0X1200
+#define MAC_IF_CFG_CFG2G5		BIT(0)
+#define MAC_IF_CFG_CFG1G		BIT(1)
+#define MAC_IF_CFG_CFGFE		BIT(2)
+#define MAC_IF_CFG_PTP_DIS		BIT(11)
+#define MAC_IF_CFG_MAC_EN		BIT(12)
+#define MAC_IF_CFG_XGMAC_RES		BIT(13)
+#define MAC_IF_CFG_LMAC_RES		BIT(14)
+#define MAC_IF_CFG_ADAP_RES		BIT(15)
+
+#define MAC_OP_CFG			0X1204
+#define MAC_OP_CFG_RX_SPTAG		GENMASK(1, 0)
+#define MAC_OP_CFG_RX_TIME		GENMASK(3, 2)
+#define MAC_OP_CFG_RX_FCS		GENMASK(5, 4)
+#define MAC_OP_CFG_RX_FCS_M0		0x00
+#define MAC_OP_CFG_RX_FCS_M1		0x01
+#define MAC_OP_CFG_RX_FCS_M2		0X02
+#define MAC_OP_CFG_RX_FCS_M3		0x03
+
+#define MAC_MTU_CFG			0X1208
+#define MAC_MTU_CFG_MTU			GENMASK(13, 0)
+
+#define PHY_MODE			0x1270
+#define PHY_MODE_FCONRX			GENMASK(6, 5)
+#define PHY_MODE_FCONTX			GENMASK(8, 7)
+#define PHY_MODE_FCON_AUTO		0x00
+#define PHY_MODE_FCON_EN		0x01
+#define PHY_MODE_FCON_DIS		0x11
+#define PHY_MODE_FDUP			GENMASK(10, 9)
+#define PHY_MODE_FDUP_AUTO		0x00
+#define PHY_MODE_FDUP_FD		0x01
+#define PHY_MODE_FDUP_HD		0x11
+#define PHY_MODE_SPEED_LSB		GENMASK(12, 11)
+#define PHY_MODE_LINKST			GENMASK(14, 13)
+#define PHY_MODE_LINKST_AUTO		0x00
+#define PHY_MODE_LINKST_UP		0x01
+#define PHY_MODE_LINKST_DOWN		0x10
+#define PHY_MODE_SPEED_MSB		BIT(15)
+#define PHY_MODE_SPEED_10M		0x000
+#define PHY_MODE_SPEED_100M		0x001
+#define PHY_MODE_SPEED_1G		0x010
+#define PHY_MODE_SPEED_10G		0x011
+#define PHY_MODE_SPEED_2G5		0x100
+#define PHY_MODE_SPEED_5G		0x101
+#define PHY_MODE_SPEED_FLEX		0x110
+#define PHY_MODE_SPEED_AUTO		0x111
+
+#define PHY_STAT			0x1274
+#define PHY_STAT_FDUP			BIT(2)
+#define PHY_STAT_SPEED_LSB		GENMASK(4, 3)
+#define PHY_STAT_LSTAT			BIT(5)
+#define PHY_STAT_SPEED_MSB		BIT(11)
+
+#define ANEG_EEE			0x1278
+#define ANEG_EEE_CAP			GENMASK(1, 0)
+#define ANEG_EEE_CAP_AUTO		0x00
+#define ANEG_EEE_CAP_ON			0x01
+#define ANEG_EEE_CAP_OFF		0x11
+#define ANEG_EEE_CLK_STOP_CAP		GENMASK(3, 2)
+
+#define MAC_Q_INC			0x100
+#define MAC_IF_CFG_REG(x)		(MAC_IF_CFG + ((x) - MAC2) * MAC_Q_INC)
+#define MAC_OP_CFG_REG(x)		(MAC_OP_CFG + ((x) - MAC2) * MAC_Q_INC)
+#define MAC_MTU_CFG_REG(x)		\
+				(MAC_MTU_CFG + ((x) - MAC2) * MAC_Q_INC)
+#define PHY_MODE_REG(x)			(PHY_MODE + ((x) - MAC2) * MAC_Q_INC)
+#define PHY_STAT_REG(x)			(PHY_STAT + ((x) - MAC2) * MAC_Q_INC)
+#define ANEG_EEE_REG(x)			(ANEG_EEE + ((x) - MAC2) * MAC_Q_INC)
+
+/* GSWIP-O TOP: XGMAC indirect access */
+#define XGMAC_CTRL			0x1280
+#define XGMAC_REGACC_DATA0		0x1290
+#define XGMAC_REGACC_DATA1		0x1294
+
+#define XGMAC_REGACC_CTRL		0x1298
+#define XGMAC_REGACC_CTRL_ADDR		GENMASK(13, 0)
+#define XGMAC_REGACC_CTRL_OPMOD_WR	BIT(14)
+#define XGMAC_REGACC_CTRL_ADDR_BAS	BIT(15)
+
+/** Legacy MAC Register Description **/
+
+/* Legacy MAC: Common Registers */
+#define MAC_TEST			0x0300
+#define MAC_PFAD_CFG			0x0304
+#define MAC_PFSA_0			0x0308
+#define MAC_PFSA_1			0x030c
+#define MAC_PFSA_2			0x0310
+#define LMAC_IER			0x0320
+#define LMAC_ISR			0x0324
+#define LMAC_I_MAC2			BIT(0)
+
+#define LMAC_CNT_LSB			0x0328
+#define LMAC_CNT_MSB			0x032c
+#define LMAC_CNT_ACC			0x0330
+
+/* Legacy MAC: Single MAC Registers */
+#define MAC_CTRL0			0x040c
+#define MAC_CTRL0_GMII			GENMASK(1, 0)
+#define MAC_CTRL0_FDUP			GENMASK(3, 2)
+#define MAC_CTRL0_FCON			GENMASK(5, 4)
+#define MAC_CTRL0_FCS			BIT(7)
+#define MAC_CTRL0_PADEN			BIT(8)
+#define MAC_CTRL0_VPADEN		BIT(9)
+#define MAC_CTRL0_VPAD2EN		BIT(10)
+#define MAC_CTRL0_APADEN		BIT(11)
+
+#define LMAC_Q_INC			0x30
+#define MAC_CTRL0_REG(x)		(MAC_CTRL0 + ((x) - MAC2) * LMAC_Q_INC)
+
+#endif /* _GSWIP_REG_H_ */
