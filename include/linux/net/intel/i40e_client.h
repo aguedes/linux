@@ -44,8 +44,7 @@ struct i40e_client;
  * In order for us to keep the interface simple, SW will define a
  * unique type value for AEQ.
  */
-#define I40E_QUEUE_TYPE_PE_AEQ  0x80
-#define I40E_QUEUE_INVALID_IDX	0xFFFF
+#define I40E_QUEUE_INVALID_IDX 0xFFFF
 
 struct i40e_qv_info {
 	u32 v_idx; /* msix_vector */
@@ -59,7 +58,6 @@ struct i40e_qvlist_info {
 	struct i40e_qv_info qv_info[1];
 };
 
-#define I40E_CLIENT_MSIX_ALL 0xFFFFFFFF
 
 /* set of LAN parameters useful for clients managed by LAN */
 
@@ -91,7 +89,6 @@ struct i40e_info {
 	u8 __iomem *hw_addr;
 	u8 fid;	/* function id, PF id or VF id */
 #define I40E_CLIENT_FTYPE_PF 0
-#define I40E_CLIENT_FTYPE_VF 1
 	u8 ftype; /* function type, PF or VF */
 	void *pf;
 
@@ -199,8 +196,6 @@ struct i40e_client {
 	unsigned long state;		/* client state */
 	atomic_t ref_cnt;  /* Count of all the client devices of this kind */
 	u32 flags;
-#define I40E_CLIENT_FLAGS_LAUNCH_ON_PROBE	BIT(0)
-#define I40E_TX_FLAGS_NOTIFY_OTHER_EVENTS	BIT(2)
 	u8 type;
 #define I40E_CLIENT_IWARP 0
 	const struct i40e_client_ops *ops; /* client ops provided by the client */
