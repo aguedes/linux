@@ -542,6 +542,8 @@ int ice_init_peer_devices(struct ice_pf *pf);
 int
 ice_for_each_peer(struct ice_pf *pf, void *data,
 		  int (*fn)(struct ice_peer_dev_int *, void *));
+const char *ice_stat_str(enum ice_status stat_err);
+const char *ice_aq_str(enum ice_aq_err aq_err);
 int ice_open(struct net_device *netdev);
 int ice_stop(struct net_device *netdev);
 
