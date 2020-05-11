@@ -297,7 +297,7 @@ ice_check_peer_for_events(struct ice_peer_dev_int *src_peer_int, void *data)
 	const struct iidc_peer_ops *p_ops = new_peer->peer_ops;
 	struct ice_peer_dev_int *new_peer_int;
 	struct iidc_peer_dev *src_peer;
-	int i;
+	unsigned long i;
 
 	src_peer = &src_peer_int->peer_dev;
 	if (!ice_validate_peer_dev(new_peer) ||
@@ -831,7 +831,8 @@ ice_peer_report_state_change(struct iidc_peer_dev *peer_dev,
 {
 	struct ice_peer_dev_int *peer_dev_int;
 	struct ice_peer_drv_int *peer_drv_int;
-	int e_type, drv_event = 0;
+	unsigned int e_type;
+	int drv_event = 0;
 	struct ice_pf *pf;
 
 	if (!ice_validate_peer_dev(peer_dev) || !event)
