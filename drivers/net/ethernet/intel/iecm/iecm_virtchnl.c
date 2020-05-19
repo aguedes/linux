@@ -689,7 +689,20 @@ iecm_send_enable_vport_msg(struct iecm_vport *vport)
 enum iecm_status
 iecm_send_disable_vport_msg(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	struct virtchnl_vport v_id;
+	enum iecm_status err;
+
+	v_id.vport_id = vport->vport_id;
+
+	err = iecm_send_mb_msg(adapter, VIRTCHNL_OP_DISABLE_VPORT,
+			       sizeof(v_id), (u8 *)&v_id);
+
+	if (!err)
+		err = iecm_wait_for_event(adapter, IECM_VC_DIS_VPORT,
+					  IECM_VC_DIS_VPORT_ERR);
+
+	return err;
 }
 
 /**
