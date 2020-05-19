@@ -443,7 +443,15 @@ static void iecm_vport_rel_all(struct iecm_adapter *adapter)
  */
 void iecm_vport_set_hsplit(struct iecm_vport *vport, struct bpf_prog *prog)
 {
-	/* stub */
+	if (prog) {
+		vport->rx_hsplit_en = IECM_RX_NO_HDR_SPLIT;
+		return;
+	}
+	if (iecm_is_cap_ena(vport->adapter, VIRTCHNL_CAP_HEADER_SPLIT) &&
+	    iecm_is_queue_model_split(vport->rxq_model))
+		vport->rx_hsplit_en = IECM_RX_HDR_SPLIT;
+	else
+		vport->rx_hsplit_en = IECM_RX_NO_HDR_SPLIT;
 }
 
 /**
@@ -531,7 +539,12 @@ static void iecm_service_task(struct work_struct *work)
  */
 static void iecm_up_complete(struct iecm_vport *vport)
 {
-	/* stub */
+	netif_set_real_num_rx_queues(vport->netdev, vport->num_txq);
+	netif_set_real_num_tx_queues(vport->netdev, vport->num_rxq);
+	netif_carrier_on(vport->netdev);
+	netif_tx_start_all_queues(vport->netdev);
+
+	vport->adapter->state = __IECM_UP;
 }
 
 /**
@@ -540,7 +553,71 @@ static void iecm_up_complete(struct iecm_vport *vport)
  */
 static int iecm_vport_open(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	int err;
+
+	if (vport->adapter->state != __IECM_DOWN)
+		return -EBUSY;
+
+	/* we do not allow interface up just yet */
+	netif_carrier_off(vport->netdev);
+
+	if (adapter->dev_ops.vc_ops.enable_vport) {
+		err = adapter->dev_ops.vc_ops.enable_vport(vport);
+		if (err)
+			return -EAGAIN;
+	}
+
+	if (iecm_vport_queues_alloc(vport)) {
+		err = -ENOMEM;
+		goto unroll_queues_alloc;
+	}
+
+	err = iecm_vport_intr_init(vport);
+	if (err)
+		goto unroll_intr_init;
+
+	err = vport->adapter->dev_ops.vc_ops.config_queues(vport);
+	if (err)
+		goto unroll_config_queues;
+	err = vport->adapter->dev_ops.vc_ops.irq_map_unmap(vport, true);
+	if (err) {
+		dev_err(&vport->adapter->pdev->dev,
+			"Call to irq_map_unmap returned %d\n", err);
+		goto unroll_config_queues;
+	}
+	err = vport->adapter->dev_ops.vc_ops.enable_queues(vport);
+	if (err)
+		goto unroll_enable_queues;
+
+	err = vport->adapter->dev_ops.vc_ops.get_ptype(vport);
+	if (err)
+		goto unroll_get_ptype;
+
+	if (adapter->rss_data.rss_lut)
+		err = iecm_config_rss(vport);
+	else
+		err = iecm_init_rss(vport);
+	if (err)
+		goto unroll_init_rss;
+	iecm_up_complete(vport);
+
+	netif_info(vport->adapter, hw, vport->netdev, "%s\n", __func__);
+
+	return 0;
+unroll_init_rss:
+unroll_get_ptype:
+	vport->adapter->dev_ops.vc_ops.disable_queues(vport);
+unroll_enable_queues:
+	vport->adapter->dev_ops.vc_ops.irq_map_unmap(vport, false);
+unroll_config_queues:
+	iecm_vport_intr_deinit(vport);
+unroll_intr_init:
+	iecm_vport_queues_rel(vport);
+unroll_queues_alloc:
+	adapter->dev_ops.vc_ops.disable_vport(vport);
+
+	return err;
 }
 
 /**
@@ -861,7 +938,9 @@ EXPORT_SYMBOL(iecm_shutdown);
  */
 static int iecm_open(struct net_device *netdev)
 {
-	/* stub */
+	struct iecm_netdev_priv *np = netdev_priv(netdev);
+
+	return iecm_vport_open(np->vport);
 }
 
 /**
