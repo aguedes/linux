@@ -163,7 +163,76 @@ intr_rel:
  */
 static int iecm_cfg_netdev(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	netdev_features_t dflt_features;
+	netdev_features_t offloads = 0;
+	struct iecm_netdev_priv *np;
+	struct net_device *netdev;
+	int err;
+
+	netdev = alloc_etherdev_mqs(sizeof(struct iecm_netdev_priv),
+				    IECM_MAX_Q, IECM_MAX_Q);
+	if (!netdev)
+		return -ENOMEM;
+	vport->netdev = netdev;
+	np = netdev_priv(netdev);
+	np->vport = vport;
+
+	if (!is_valid_ether_addr(vport->default_mac_addr)) {
+		eth_hw_addr_random(netdev);
+		ether_addr_copy(vport->default_mac_addr, netdev->dev_addr);
+	} else {
+		ether_addr_copy(netdev->dev_addr, vport->default_mac_addr);
+		ether_addr_copy(netdev->perm_addr, vport->default_mac_addr);
+	}
+
+	/* assign netdev_ops */
+	if (iecm_is_queue_model_split(vport->txq_model))
+		netdev->netdev_ops = &iecm_netdev_ops_splitq;
+	else
+		netdev->netdev_ops = &iecm_netdev_ops_singleq;
+
+	/* setup watchdog timeout value to be 5 second */
+	netdev->watchdog_timeo = 5 * HZ;
+
+	/* configure default MTU size */
+	netdev->min_mtu = ETH_MIN_MTU;
+	netdev->max_mtu = vport->max_mtu;
+
+	dflt_features = NETIF_F_SG	|
+			NETIF_F_HIGHDMA |
+			NETIF_F_RXHASH;
+
+	if (iecm_is_cap_ena(adapter, VIRTCHNL_CAP_STATELESS_OFFLOADS)) {
+		dflt_features |=
+			NETIF_F_RXCSUM |
+			NETIF_F_IP_CSUM |
+			NETIF_F_IPV6_CSUM |
+			0;
+		offloads |= NETIF_F_TSO |
+			    NETIF_F_TSO6;
+	}
+	if (iecm_is_cap_ena(adapter, VIRTCHNL_CAP_UDP_SEG_OFFLOAD))
+		offloads |= NETIF_F_GSO_UDP_L4;
+
+	netdev->features |= dflt_features;
+	netdev->hw_features |= dflt_features | offloads;
+	netdev->hw_enc_features |= dflt_features | offloads;
+
+	iecm_set_ethtool_ops(netdev);
+	SET_NETDEV_DEV(netdev, &adapter->pdev->dev);
+
+	err = register_netdev(netdev);
+	if (err)
+		return err;
+
+	/* carrier off on init to avoid Tx hangs */
+	netif_carrier_off(netdev);
+
+	/* make sure transmit queues start off as stopped */
+	netif_tx_stop_all_queues(netdev);
+
+	return 0;
 }
 
 /**
