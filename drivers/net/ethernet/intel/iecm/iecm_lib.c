@@ -24,7 +24,17 @@ static void iecm_mb_intr_rel_irq(struct iecm_adapter *adapter)
  */
 static void iecm_intr_rel(struct iecm_adapter *adapter)
 {
-	/* stub */
+	if (!adapter->msix_entries)
+		return;
+	clear_bit(__IECM_MB_INTR_MODE, adapter->flags);
+	clear_bit(__IECM_MB_INTR_TRIGGER, adapter->flags);
+	iecm_mb_intr_rel_irq(adapter);
+
+	pci_free_irq_vectors(adapter->pdev);
+	kfree(adapter->msix_entries);
+	adapter->msix_entries = NULL;
+	kfree(adapter->req_vec_chunks);
+	adapter->req_vec_chunks = NULL;
 }
 
 /**
@@ -96,7 +106,53 @@ void iecm_intr_distribute(struct iecm_adapter *adapter)
  */
 static int iecm_intr_req(struct iecm_adapter *adapter)
 {
-	/* stub */
+	int min_vectors, max_vectors, err = 0;
+	unsigned int vector;
+	int num_vecs;
+	int v_actual;
+
+	num_vecs = adapter->vports[0]->num_q_vectors +
+		   IECM_MAX_NONQ_VEC + IECM_MAX_RDMA_VEC;
+
+	min_vectors = IECM_MIN_VEC;
+#define IECM_MAX_EVV_MAPPED_VEC 16
+	max_vectors = min(num_vecs, IECM_MAX_EVV_MAPPED_VEC);
+
+	v_actual = pci_alloc_irq_vectors(adapter->pdev, min_vectors,
+					 max_vectors, PCI_IRQ_MSIX);
+	if (v_actual < 0) {
+		dev_err(&adapter->pdev->dev, "Failed to allocate MSIX vectors: %d\n",
+			v_actual);
+		return v_actual;
+	}
+
+	adapter->msix_entries = kcalloc(v_actual, sizeof(struct msix_entry),
+					GFP_KERNEL);
+
+	if (!adapter->msix_entries) {
+		pci_free_irq_vectors(adapter->pdev);
+		return -ENOMEM;
+	}
+
+	for (vector = 0; vector < v_actual; vector++) {
+		adapter->msix_entries[vector].entry = vector;
+		adapter->msix_entries[vector].vector =
+			pci_irq_vector(adapter->pdev, vector);
+	}
+	adapter->num_msix_entries = v_actual;
+	adapter->num_req_msix = num_vecs;
+
+	iecm_intr_distribute(adapter);
+
+	err = iecm_mb_intr_init(adapter);
+	if (err)
+		goto intr_rel;
+	iecm_mb_irq_enable(adapter);
+	return err;
+
+intr_rel:
+	iecm_intr_rel(adapter);
+	return err;
 }
 
 /**
@@ -118,7 +174,21 @@ static int iecm_cfg_netdev(struct iecm_vport *vport)
  */
 static int iecm_cfg_hw(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct pci_dev *pdev = adapter->pdev;
+	struct iecm_hw *hw = &adapter->hw;
+
+	hw->hw_addr_len = pci_resource_len(pdev, 0);
+	hw->hw_addr = ioremap(pci_resource_start(pdev, 0), hw->hw_addr_len);
+
+	if (!hw->hw_addr)
+		return -EIO;
+
+	hw->back = adapter;
+	hw->bus.device = PCI_SLOT(pdev->devfn);
+	hw->bus.func = PCI_FUNC(pdev->devfn);
+	hw->bus.bus_id = pdev->bus->number;
+
+	return 0;
 }
 
 /**
@@ -132,7 +202,22 @@ static int iecm_cfg_hw(struct iecm_adapter *adapter)
  */
 static int iecm_get_free_slot(void *array, int size, int curr)
 {
-	/* stub */
+	int **tmp_array = (int **)array;
+	int next;
+
+	if (curr < (size - 1) && !tmp_array[curr + 1]) {
+		next = curr + 1;
+	} else {
+		int i = 0;
+
+		while ((i < size) && (tmp_array[i]))
+			i++;
+		if (i == size)
+			next = IECM_NO_FREE_SLOT;
+		else
+			next = i;
+	}
+	return next;
 }
 
 /**
@@ -141,7 +226,9 @@ static int iecm_get_free_slot(void *array, int size, int curr)
  */
 struct iecm_vport *iecm_netdev_to_vport(struct net_device *netdev)
 {
-	/* stub */
+	struct iecm_netdev_priv *np = netdev_priv(netdev);
+
+	return np->vport;
 }
 
 /**
@@ -150,7 +237,9 @@ struct iecm_vport *iecm_netdev_to_vport(struct net_device *netdev)
  */
 struct iecm_adapter *iecm_netdev_to_adapter(struct net_device *netdev)
 {
-	/* stub */
+	struct iecm_netdev_priv *np = netdev_priv(netdev);
+
+	return np->vport->adapter;
 }
 
 /**
@@ -185,7 +274,22 @@ static int iecm_stop(struct net_device *netdev)
  */
 int iecm_vport_rel(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter;
+
+	if (!vport->adapter)
+		return -ENODEV;
+	adapter = vport->adapter;
+
+	iecm_vport_stop(vport);
+	iecm_deinit_rss(vport);
+	unregister_netdev(vport->netdev);
+	free_netdev(vport->netdev);
+	vport->netdev = NULL;
+	if (adapter->dev_ops.vc_ops.destroy_vport)
+		adapter->dev_ops.vc_ops.destroy_vport(vport);
+	kfree(vport);
+
+	return 0;
 }
 
 /**
@@ -194,7 +298,24 @@ int iecm_vport_rel(struct iecm_vport *vport)
  */
 static void iecm_vport_rel_all(struct iecm_adapter *adapter)
 {
-	/* stub */
+	int err, i;
+
+	if (!adapter->vports)
+		return;
+
+	for (i = 0; i < adapter->num_alloc_vport; i++) {
+		if (!adapter->vports[i])
+			continue;
+
+		err = iecm_vport_rel(adapter->vports[i]);
+		if (err)
+			dev_dbg(&adapter->pdev->dev,
+				"Failed to release adapter->vport[%d], err %d,\n",
+				i, err);
+		else
+			adapter->vports[i] = NULL;
+	}
+	adapter->num_alloc_vport = 0;
 }
 
 /**
@@ -217,7 +338,47 @@ void iecm_vport_set_hsplit(struct iecm_vport *vport, struct bpf_prog *prog)
 static struct iecm_vport *
 iecm_vport_alloc(struct iecm_adapter *adapter, int vport_id)
 {
-	/* stub */
+	struct iecm_vport *vport = NULL;
+
+	if (adapter->next_vport == IECM_NO_FREE_SLOT)
+		return vport;
+
+	/* Need to protect the allocation of the vports at the adapter level */
+	mutex_lock(&adapter->sw_mutex);
+
+	vport = kzalloc(sizeof(*vport), GFP_KERNEL);
+	if (!vport)
+		goto unlock_adapter;
+
+	vport->adapter = adapter;
+	vport->idx = adapter->next_vport;
+	vport->compln_clean_budget = IECM_TX_COMPLQ_CLEAN_BUDGET;
+	adapter->num_alloc_vport++;
+	adapter->dev_ops.vc_ops.vport_init(vport, vport_id);
+
+	/* Setup default MSIX irq handler for the vport */
+	vport->irq_q_handler = iecm_vport_intr_clean_queues;
+	vport->q_vector_base = IECM_MAX_NONQ_VEC;
+
+	/* fill vport slot in the adapter struct */
+	adapter->vports[adapter->next_vport] = vport;
+	if (iecm_cfg_netdev(vport))
+		goto cfg_netdev_fail;
+
+	/* prepare adapter->next_vport for next use */
+	adapter->next_vport = iecm_get_free_slot(adapter->vports,
+						 adapter->num_alloc_vport,
+						 adapter->next_vport);
+
+	goto unlock_adapter;
+
+cfg_netdev_fail:
+	adapter->vports[adapter->next_vport] = NULL;
+	kfree(vport);
+	vport = NULL;
+unlock_adapter:
+	mutex_unlock(&adapter->sw_mutex);
+	return vport;
 }
 
 /**
@@ -227,7 +388,22 @@ iecm_vport_alloc(struct iecm_adapter *adapter, int vport_id)
  */
 static void iecm_service_task(struct work_struct *work)
 {
-	/* stub */
+	struct iecm_adapter *adapter = container_of(work,
+						    struct iecm_adapter,
+						    serv_task.work);
+
+	if (test_bit(__IECM_MB_INTR_MODE, adapter->flags)) {
+		if (test_and_clear_bit(__IECM_MB_INTR_TRIGGER,
+				       adapter->flags)) {
+			iecm_recv_mb_msg(adapter, VIRTCHNL_OP_UNKNOWN, NULL, 0);
+			iecm_mb_irq_enable(adapter);
+		}
+	} else {
+		iecm_recv_mb_msg(adapter, VIRTCHNL_OP_UNKNOWN, NULL, 0);
+	}
+
+	queue_delayed_work(adapter->serv_wq, &adapter->serv_task,
+			   msecs_to_jiffies(300));
 }
 
 /**
@@ -261,7 +437,41 @@ static int iecm_vport_open(struct iecm_vport *vport)
  */
 static void iecm_init_task(struct work_struct *work)
 {
-	/* stub */
+	struct iecm_adapter *adapter = container_of(work,
+						    struct iecm_adapter,
+						    init_task.work);
+	struct iecm_vport *vport;
+	struct pci_dev *pdev;
+	int vport_id, err;
+
+	err = adapter->dev_ops.vc_ops.core_init(adapter, &vport_id);
+	if (err)
+		return;
+
+	pdev = adapter->pdev;
+	vport = iecm_vport_alloc(adapter, vport_id);
+	if (!vport) {
+		err = -EFAULT;
+		dev_err(&pdev->dev, "probe failed on vport setup:%d\n",
+			err);
+		return;
+	}
+	/* Start the service task before requesting vectors. This will ensure
+	 * vector information response from mailbox is handled
+	 */
+	queue_delayed_work(adapter->serv_wq, &adapter->serv_task,
+			   msecs_to_jiffies(5 * (pdev->devfn & 0x07)));
+	err = iecm_intr_req(adapter);
+	if (err) {
+		dev_err(&pdev->dev, "failed to enable interrupt vectors: %d\n",
+			err);
+		iecm_vport_rel(vport);
+		return;
+	}
+	/* Once state is put into DOWN, driver is ready for dev_open */
+	adapter->state = __IECM_DOWN;
+	if (test_and_clear_bit(__IECM_UP_REQUESTED, adapter->flags))
+		iecm_vport_open(vport);
 }
 
 /**
@@ -272,7 +482,40 @@ static void iecm_init_task(struct work_struct *work)
  */
 static int iecm_api_init(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_reg_ops *reg_ops = &adapter->dev_ops.reg_ops;
+	struct pci_dev *pdev = adapter->pdev;
+
+	if (!adapter->dev_ops.reg_ops_init) {
+		dev_err(&pdev->dev, "Invalid device, register API init not defined.\n");
+		return -EINVAL;
+	}
+	adapter->dev_ops.reg_ops_init(adapter);
+	if (!(reg_ops->ctlq_reg_init && reg_ops->vportq_reg_init &&
+	      reg_ops->intr_reg_init && reg_ops->mb_intr_reg_init &&
+	      reg_ops->reset_reg_init && reg_ops->trigger_reset)) {
+		dev_err(&pdev->dev, "Invalid device, missing one or more register functions\n");
+		return -EINVAL;
+	}
+
+	if (adapter->dev_ops.vc_ops_init) {
+		struct iecm_virtchnl_ops *vc_ops;
+
+		adapter->dev_ops.vc_ops_init(adapter);
+		vc_ops = &adapter->dev_ops.vc_ops;
+		if (!(vc_ops->core_init && vc_ops->vport_init &&
+		      vc_ops->vport_queue_ids_init && vc_ops->get_caps &&
+		      vc_ops->config_queues && vc_ops->enable_queues &&
+		      vc_ops->disable_queues && vc_ops->irq_map_unmap &&
+		      vc_ops->get_set_rss_lut && vc_ops->get_set_rss_hash &&
+		      vc_ops->adjust_qs && vc_ops->get_ptype)) {
+			dev_err(&pdev->dev, "Invalid device, missing one or more virtchnl functions\n");
+			return -EINVAL;
+		}
+	} else {
+		iecm_vc_ops_init(adapter);
+	}
+
+	return 0;
 }
 
 /**
@@ -284,7 +527,11 @@ static int iecm_api_init(struct iecm_adapter *adapter)
  */
 void iecm_deinit_task(struct iecm_adapter *adapter)
 {
-	/* stub */
+	iecm_vport_rel_all(adapter);
+	cancel_delayed_work_sync(&adapter->serv_task);
+	iecm_deinit_dflt_mbx(adapter);
+	iecm_vport_params_buf_rel(adapter);
+	iecm_intr_rel(adapter);
 }
 
 /**
@@ -306,7 +553,13 @@ iecm_init_hard_reset(struct iecm_adapter *adapter)
  */
 static void iecm_vc_event_task(struct work_struct *work)
 {
-	/* stub */
+	struct iecm_adapter *adapter = container_of(work,
+						    struct iecm_adapter,
+						    vc_event_task.work);
+
+	if (test_bit(__IECM_HR_CORE_RESET, adapter->flags) ||
+	    test_bit(__IECM_HR_FUNC_RESET, adapter->flags))
+		iecm_init_hard_reset(adapter);
 }
 
 /**
@@ -335,7 +588,103 @@ int iecm_probe(struct pci_dev *pdev,
 	       const struct pci_device_id __always_unused *ent,
 	       struct iecm_adapter *adapter)
 {
-	/* stub */
+	int err;
+
+	adapter->pdev = pdev;
+	err = iecm_api_init(adapter);
+	if (err) {
+		dev_err(&pdev->dev, "Device API is incorrectly configured\n");
+		return err;
+	}
+
+	err = pcim_iomap_regions(pdev, BIT(IECM_BAR0), pci_name(pdev));
+	if (err) {
+		dev_err(&pdev->dev, "BAR0 I/O map error %d\n", err);
+		return err;
+	}
+
+	/* set up for high or low dma */
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (err)
+		err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	if (err) {
+		dev_err(&pdev->dev, "DMA configuration failed: 0x%x\n", err);
+		return err;
+	}
+
+	pci_enable_pcie_error_reporting(pdev);
+	pci_set_master(pdev);
+	pci_set_drvdata(pdev, adapter);
+
+	adapter->init_wq =
+		alloc_workqueue("%s", WQ_MEM_RECLAIM, 0, KBUILD_MODNAME);
+	if (!adapter->init_wq) {
+		dev_err(&pdev->dev, "Failed to allocate workqueue\n");
+		err = -ENOMEM;
+		goto err_wq_alloc;
+	}
+
+	adapter->serv_wq =
+		alloc_workqueue("%s", WQ_MEM_RECLAIM, 0, KBUILD_MODNAME);
+	if (!adapter->serv_wq) {
+		dev_err(&pdev->dev, "Failed to allocate workqueue\n");
+		err = -ENOMEM;
+		goto err_mbx_wq_alloc;
+	}
+	/* setup msglvl */
+	adapter->msg_enable = netif_msg_init(debug, IECM_DFLT_NETIF_M);
+
+	adapter->vports = kcalloc(IECM_MAX_NUM_VPORTS,
+				  sizeof(*adapter->vports), GFP_KERNEL);
+	if (!adapter->vports) {
+		err = -ENOMEM;
+		goto err_vport_alloc;
+	}
+
+	err = iecm_vport_params_buf_alloc(adapter);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to alloc vport params buffer: %d\n",
+			err);
+		goto err_mb_res;
+	}
+
+	err = iecm_cfg_hw(adapter);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to configure HW structure for adapter: %d\n",
+			err);
+		goto err_cfg_hw;
+	}
+
+	mutex_init(&adapter->sw_mutex);
+	mutex_init(&adapter->vc_msg_lock);
+	mutex_init(&adapter->reset_lock);
+	init_waitqueue_head(&adapter->vchnl_wq);
+
+	INIT_DELAYED_WORK(&adapter->serv_task, iecm_service_task);
+	INIT_DELAYED_WORK(&adapter->init_task, iecm_init_task);
+	INIT_DELAYED_WORK(&adapter->vc_event_task, iecm_vc_event_task);
+
+	mutex_lock(&adapter->reset_lock);
+	set_bit(__IECM_HR_DRV_LOAD, adapter->flags);
+	err = iecm_init_hard_reset(adapter);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to reset device: %d\n", err);
+		goto err_mb_init;
+	}
+
+	return 0;
+err_mb_init:
+err_cfg_hw:
+	iecm_vport_params_buf_rel(adapter);
+err_mb_res:
+	kfree(adapter->vports);
+err_vport_alloc:
+	destroy_workqueue(adapter->serv_wq);
+err_mbx_wq_alloc:
+	destroy_workqueue(adapter->init_wq);
+err_wq_alloc:
+	pci_disable_pcie_error_reporting(pdev);
+	return err;
 }
 EXPORT_SYMBOL(iecm_probe);
 
@@ -345,7 +694,22 @@ EXPORT_SYMBOL(iecm_probe);
  */
 void iecm_remove(struct pci_dev *pdev)
 {
-	/* stub */
+	struct iecm_adapter *adapter = pci_get_drvdata(pdev);
+
+	if (!adapter)
+		return;
+
+	iecm_deinit_task(adapter);
+	cancel_delayed_work_sync(&adapter->vc_event_task);
+	destroy_workqueue(adapter->serv_wq);
+	destroy_workqueue(adapter->init_wq);
+	kfree(adapter->vports);
+	kfree(adapter->vport_params_recvd);
+	kfree(adapter->vport_params_reqd);
+	mutex_destroy(&adapter->sw_mutex);
+	mutex_destroy(&adapter->vc_msg_lock);
+	mutex_destroy(&adapter->reset_lock);
+	pci_disable_pcie_error_reporting(pdev);
 }
 EXPORT_SYMBOL(iecm_remove);
 
@@ -355,7 +719,13 @@ EXPORT_SYMBOL(iecm_remove);
  */
 void iecm_shutdown(struct pci_dev *pdev)
 {
-	/* stub */
+	struct iecm_adapter *adapter;
+
+	adapter = pci_get_drvdata(pdev);
+	adapter->state = __IECM_REMOVE;
+
+	if (system_state == SYSTEM_POWER_OFF)
+		pci_set_power_state(pdev, PCI_D3hot);
 }
 EXPORT_SYMBOL(iecm_shutdown);
 

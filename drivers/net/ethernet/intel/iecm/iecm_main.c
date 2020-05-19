@@ -31,7 +31,10 @@ MODULE_PARM_DESC(debug, "netif level (0=none,...,16=all)");
  */
 static int __init iecm_module_init(void)
 {
-	/* stub */
+	pr_info("%s - version %d\n", iecm_driver_string, LINUX_VERSION_CODE);
+	pr_info("%s\n", iecm_copyright);
+
+	return 0;
 }
 module_init(iecm_module_init);
 
@@ -43,6 +46,6 @@ module_init(iecm_module_init);
  */
 static void __exit iecm_module_exit(void)
 {
-	/* stub */
+	pr_info("module unloaded\n");
 }
 module_exit(iecm_module_exit);
