@@ -764,7 +764,37 @@ void iecm_deinit_task(struct iecm_adapter *adapter)
 static enum iecm_status
 iecm_init_hard_reset(struct iecm_adapter *adapter)
 {
-	/* stub */
+	enum iecm_status err;
+
+	/* Prepare for reset */
+	if (test_bit(__IECM_HR_FUNC_RESET, adapter->flags)) {
+		iecm_deinit_task(adapter);
+		adapter->dev_ops.reg_ops.trigger_reset(adapter,
+						       __IECM_HR_FUNC_RESET);
+		set_bit(__IECM_UP_REQUESTED, adapter->flags);
+		clear_bit(__IECM_HR_FUNC_RESET, adapter->flags);
+	} else if (test_bit(__IECM_HR_CORE_RESET, adapter->flags)) {
+		if (adapter->state == __IECM_UP)
+			set_bit(__IECM_UP_REQUESTED, adapter->flags);
+		iecm_deinit_task(adapter);
+		clear_bit(__IECM_HR_CORE_RESET, adapter->flags);
+	} else if (test_and_clear_bit(__IECM_HR_DRV_LOAD, adapter->flags)) {
+	/* Trigger reset */
+	} else {
+		dev_err(&adapter->pdev->dev, "Unhandled hard reset cause\n");
+		err = IECM_ERR_PARAM;
+		goto handle_err;
+	}
+
+	/* Reset is complete and so start building the driver resources again */
+	err = iecm_init_dflt_mbx(adapter);
+	if (err) {
+		dev_err(&adapter->pdev->dev, "Failed to initialize default mailbox: %d\n",
+			err);
+	}
+handle_err:
+	mutex_unlock(&adapter->reset_lock);
+	return err;
 }
 
 /**
@@ -793,7 +823,57 @@ static void iecm_vc_event_task(struct work_struct *work)
 int iecm_initiate_soft_reset(struct iecm_vport *vport,
 			     enum iecm_flags reset_cause)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	enum iecm_state current_state;
+	enum iecm_status status;
+	int err = 0;
+
+	/* Make sure we do not end up in initiating multiple resets */
+	mutex_lock(&adapter->reset_lock);
+
+	current_state = vport->adapter->state;
+	switch (reset_cause) {
+	case __IECM_SR_Q_CHANGE:
+		/* If we're changing number of queues requested, we need to
+		 * send a 'delete' message before freeing the queue resources.
+		 * We'll send an 'add' message in adjust_qs which doesn't
+		 * require the queue resources to be reallocated yet.
+		 */
+		if (current_state <= __IECM_DOWN) {
+			iecm_send_delete_queues_msg(vport);
+		} else {
+			set_bit(__IECM_DEL_QUEUES, adapter->flags);
+			iecm_vport_stop(vport);
+		}
+		iecm_deinit_rss(vport);
+		status = adapter->dev_ops.vc_ops.adjust_qs(vport);
+		if (status) {
+			err = -EFAULT;
+			goto reset_failure;
+		}
+		iecm_intr_rel(adapter);
+		iecm_vport_calc_num_q_vec(vport);
+		iecm_intr_req(adapter);
+		break;
+	case __IECM_SR_Q_DESC_CHANGE:
+		iecm_vport_stop(vport);
+		iecm_vport_calc_num_q_desc(vport);
+		break;
+	case __IECM_SR_Q_SCH_CHANGE:
+	case __IECM_SR_MTU_CHANGE:
+		iecm_vport_stop(vport);
+		break;
+	default:
+		dev_err(&adapter->pdev->dev, "Unhandled soft reset cause\n");
+		err = -EINVAL;
+		goto reset_failure;
+	}
+
+	if (current_state == __IECM_UP)
+		err = iecm_vport_open(vport);
+reset_failure:
+	mutex_unlock(&adapter->reset_lock);
+	return err;
 }
 
 /**
@@ -884,6 +964,7 @@ int iecm_probe(struct pci_dev *pdev,
 	INIT_DELAYED_WORK(&adapter->init_task, iecm_init_task);
 	INIT_DELAYED_WORK(&adapter->vc_event_task, iecm_vc_event_task);
 
+	adapter->dev_ops.reg_ops.reset_reg_init(&adapter->reset_reg);
 	mutex_lock(&adapter->reset_lock);
 	set_bit(__IECM_HR_DRV_LOAD, adapter->flags);
 	err = iecm_init_hard_reset(adapter);
@@ -977,7 +1058,20 @@ static int iecm_open(struct net_device *netdev)
  */
 static int iecm_change_mtu(struct net_device *netdev, int new_mtu)
 {
-	/* stub */
+	struct iecm_vport *vport =  iecm_netdev_to_vport(netdev);
+
+	if (new_mtu < netdev->min_mtu) {
+		netdev_err(netdev, "new MTU invalid. min_mtu is %d\n",
+			   netdev->min_mtu);
+		return -EINVAL;
+	} else if (new_mtu > netdev->max_mtu) {
+		netdev_err(netdev, "new MTU invalid. max_mtu is %d\n",
+			   netdev->max_mtu);
+		return -EINVAL;
+	}
+	netdev->mtu = new_mtu;
+
+	return iecm_initiate_soft_reset(vport, __IECM_SR_MTU_CHANGE);
 }
 
 static const struct net_device_ops iecm_netdev_ops_splitq = {
