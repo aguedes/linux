@@ -303,7 +303,6 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 	ret_val = e1000_disable_ulp_lpt_lp(hw, true);
 	if (ret_val) {
 		e_warn("Failed to disable ULP\n");
-		goto out;
 	}
 
 	ret_val = hw->phy.ops.acquire(hw);
