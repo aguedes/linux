@@ -120,6 +120,7 @@ void ice_vc_notify_link_state(struct ice_pf *pf);
 void ice_vc_notify_reset(struct ice_pf *pf);
 bool ice_reset_all_vfs(struct ice_pf *pf, bool is_vflr);
 bool ice_reset_vf(struct ice_vf *vf, bool is_vflr);
+void ice_restore_all_vfs_msi_state(struct pci_dev *pdev);
 
 int
 ice_set_vf_port_vlan(struct net_device *netdev, int vf_id, u16 vlan_id, u8 qos,
@@ -157,6 +158,7 @@ bool ice_vc_isvalid_vsi_id(struct ice_vf *vf, u16 vsi_id);
 #define ice_vf_lan_overflow_event(pf, event) do {} while (0)
 #define ice_print_vfs_mdd_events(pf) do {} while (0)
 #define ice_print_vf_rx_mdd_event(vf) do {} while (0)
+#define ice_restore_all_vfs_msi_state(pdev) do {} while (0)
 
 static inline bool
 ice_reset_all_vfs(struct ice_pf __always_unused *pf,
