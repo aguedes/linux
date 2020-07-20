@@ -39,6 +39,9 @@
 #define ice_for_each_vf(pf, i) \
 	for ((i) = 0; (i) < (pf)->num_alloc_vfs; (i)++)
 
+/* Max number of flexible descriptor rxdid */
+#define ICE_FLEX_DESC_RXDID_MAX_NUM 64
+
 /* Specific VF states */
 enum ice_vf_states {
 	ICE_VF_STATE_INIT = 0,		/* PF is initializing VF */

@@ -445,6 +445,7 @@ struct ice_pf {
 	__le64 nvm_phy_type_lo; /* NVM PHY type low */
 	__le64 nvm_phy_type_hi; /* NVM PHY type high */
 	struct ice_link_default_override_tlv link_dflt_override;
+	u64 supported_rxdids; /* bitmap for supported RXDID */
 };
 
 struct ice_netdev_priv {
