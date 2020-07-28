@@ -2692,7 +2692,15 @@ int i40e_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 	case SIOCGHWTSTAMP:
 		return i40e_ptp_get_ts_config(pf, ifr);
 	case SIOCSHWTSTAMP:
+		if (!capable(CAP_SYS_ADMIN))
+			return -EACCES;
 		return i40e_ptp_set_ts_config(pf, ifr);
+	case SIOCSPINS:
+		if (!capable(CAP_SYS_ADMIN))
+			return -EACCES;
+		return i40e_ptp_set_pins_ioctl(pf, ifr);
+	case SIOCGPINS:
+		return i40e_ptp_get_pins(pf, ifr);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -4042,10 +4050,13 @@ static irqreturn_t i40e_intr(int irq, void *data)
 	if (icr0 & I40E_PFINT_ICR0_TIMESYNC_MASK) {
 		u32 prttsyn_stat = rd32(hw, I40E_PRTTSYN_STAT_0);
 
-		if (prttsyn_stat & I40E_PRTTSYN_STAT_0_TXTIME_MASK) {
-			icr0 &= ~I40E_PFINT_ICR0_ENA_TIMESYNC_MASK;
+		if (prttsyn_stat & I40E_PRTTSYN_STAT_0_EVENT0_MASK)
+			schedule_work(&pf->ptp_extts0_work);
+
+		if (prttsyn_stat & I40E_PRTTSYN_STAT_0_TXTIME_MASK)
 			i40e_ptp_tx_hwtstamp(pf);
-		}
+
+		icr0 &= ~I40E_PFINT_ICR0_ENA_TIMESYNC_MASK;
 	}
 
 	/* If a critical error is pending we have no choice but to reset the
@@ -14941,6 +14952,7 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (is_valid_ether_addr(hw->mac.port_addr))
 		pf->hw_features |= I40E_HW_PORT_ID_VALID;
 
+	i40e_ptp_alloc_pins(pf);
 	pci_set_drvdata(pdev, pf);
 	pci_save_state(pdev);
 
