@@ -178,8 +178,10 @@ static void igc_clean_tx_ring(struct igc_ring *tx_ring)
 	while (i != tx_ring->next_to_use) {
 		union igc_adv_tx_desc *eop_desc, *tx_desc;
 
-		/* Free all the Tx ring sk_buffs */
-		dev_kfree_skb_any(tx_buffer->skb);
+		if (tx_buffer->tx_flags & IGC_TX_FLAGS_XDP)
+			xdp_return_frame(tx_buffer->xdpf);
+		else
+			dev_kfree_skb_any(tx_buffer->skb);
 
 		/* unmap skb header data */
 		dma_unmap_single(tx_ring->dev,
@@ -407,6 +409,8 @@ void igc_free_rx_resources(struct igc_ring *rx_ring)
 {
 	igc_clean_rx_ring(rx_ring);
 
+	igc_xdp_unregister_rxq_info(rx_ring);
+
 	vfree(rx_ring->rx_buffer_info);
 	rx_ring->rx_buffer_info = NULL;
 
@@ -444,7 +448,11 @@ int igc_setup_rx_resources(struct igc_ring *rx_ring)
 {
 	struct net_device *ndev = rx_ring->netdev;
 	struct device *dev = rx_ring->dev;
-	int size, desc_len;
+	int size, desc_len, res;
+
+	res = igc_xdp_register_rxq_info(rx_ring);
+	if (res < 0)
+		return res;
 
 	size = sizeof(struct igc_rx_buffer) * rx_ring->count;
 	rx_ring->rx_buffer_info = vzalloc(size);
@@ -470,6 +478,7 @@ int igc_setup_rx_resources(struct igc_ring *rx_ring)
 	return 0;
 
 err:
+	igc_xdp_unregister_rxq_info(rx_ring);
 	vfree(rx_ring->rx_buffer_info);
 	rx_ring->rx_buffer_info = NULL;
 	netdev_err(ndev, "Unable to allocate memory for Rx descriptor ring\n");
@@ -1918,20 +1927,49 @@ static void igc_alloc_rx_buffers(struct igc_ring *rx_ring, u16 cleaned_count)
 	}
 }
 
+/* This function assumes __netif_tx_lock is held by the caller. */
+static void igc_flush_tx_descriptors(struct igc_ring *ring)
+{
+	/* Once tail pointer is updated, hardware can fetch the descriptors
+	 * any time so we issue a write membar here to ensure all memory
+	 * writes are complete before the tail pointer is updated.
+	 */
+	wmb();
+	writel(ring->next_to_use, ring->tail);
+}
+
+static void igc_finalize_xdp(struct igc_adapter *adapter, int status)
+{
+	int cpu = smp_processor_id();
+	struct netdev_queue *nq;
+	struct igc_ring *ring;
+
+	if (status & IGC_XDP_TX) {
+		ring = igc_xdp_get_tx_ring(adapter, cpu);
+		nq = txring_txq(ring);
+
+		__netif_tx_lock(nq, cpu);
+		igc_flush_tx_descriptors(ring);
+		__netif_tx_unlock(nq);
+	}
+}
+
 static int igc_clean_rx_irq(struct igc_q_vector *q_vector, const int budget)
 {
 	unsigned int total_bytes = 0, total_packets = 0;
+	struct igc_adapter *adapter = q_vector->adapter;
 	struct igc_ring *rx_ring = q_vector->rx.ring;
 	struct sk_buff *skb = rx_ring->skb;
 	u16 cleaned_count = igc_desc_unused(rx_ring);
+	int xdp_status = 0;
 
 	while (likely(total_packets < budget)) {
 		union igc_adv_rx_desc *rx_desc;
 		struct igc_rx_buffer *rx_buffer;
+		unsigned int size, truesize;
 		ktime_t timestamp = 0;
 		struct xdp_buff xdp;
 		int pkt_offset = 0;
-		unsigned int size;
 		void *pktbuf;
 
 		/* return some buffers to hardware, one at a time is too slow */
@@ -1952,6 +1990,7 @@ static int igc_clean_rx_irq(struct igc_q_vector *q_vector, const int budget)
 		dma_rmb();
 
 		rx_buffer = igc_get_rx_buffer(rx_ring, size);
+		truesize = igc_get_rx_frame_truesize(rx_ring, size);
 
 		pktbuf = page_address(rx_buffer->page) + rx_buffer->page_offset;
 
@@ -1963,19 +2002,29 @@ static int igc_clean_rx_irq(struct igc_q_vector *q_vector, const int budget)
 		}
 
 		if (!skb) {
-			struct igc_adapter *adapter = q_vector->adapter;
-
 			xdp.data = pktbuf + pkt_offset;
 			xdp.data_end = xdp.data + size;
 			xdp.data_hard_start = pktbuf - igc_rx_offset(rx_ring);
 			xdp_set_data_meta_invalid(&xdp);
-			xdp.frame_sz = igc_get_rx_frame_truesize(rx_ring, size);
+			xdp.frame_sz = truesize;
+			xdp.rxq = &rx_ring->xdp_rxq;
 
 			skb = igc_xdp_run_prog(adapter, &xdp);
 		}
 
 		if (IS_ERR(skb)) {
-			rx_buffer->pagecnt_bias++;
+			unsigned int xdp_res = -PTR_ERR(skb);
+
+			switch (xdp_res) {
+			case IGC_XDP_CONSUMED:
+				rx_buffer->pagecnt_bias++;
+				break;
+			case IGC_XDP_TX:
+				igc_rx_buffer_flip(rx_buffer, truesize);
+				xdp_status |= xdp_res;
+				break;
+			}
+
 			total_packets++;
 			total_bytes += size;
 		} else if (skb)
@@ -2020,6 +2069,9 @@ static int igc_clean_rx_irq(struct igc_q_vector *q_vector, const int budget)
 		/* update budget accounting */
 		total_packets++;
 	}
+
+	if (xdp_status)
+		igc_finalize_xdp(adapter, xdp_status);
 
 	/* place incomplete frames back on ring for completion */
 	rx_ring->skb = skb;
@@ -2082,8 +2134,10 @@ static bool igc_clean_tx_irq(struct igc_q_vector *q_vector, int napi_budget)
 		total_bytes += tx_buffer->bytecount;
 		total_packets += tx_buffer->gso_segs;
 
-		/* free the skb */
-		napi_consume_skb(tx_buffer->skb, napi_budget);
+		if (tx_buffer->tx_flags & IGC_TX_FLAGS_XDP)
+			xdp_return_frame(tx_buffer->xdpf);
+		else
+			napi_consume_skb(tx_buffer->skb, napi_budget);
 
 		/* unmap skb header data */
 		dma_unmap_single(tx_ring->dev,
