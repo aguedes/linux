@@ -981,7 +981,7 @@ static void i40e_ptp_set_pin_hw(struct i40e_hw *hw,
  **/
 static void i40e_ptp_set_led_hw(struct i40e_hw *hw,
 				unsigned int led,
-				enum i40e_ptp_gpio_pin_state state)
+				enum i40e_ptp_led_pin_state state)
 {
 	switch (state) {
 	case low:
