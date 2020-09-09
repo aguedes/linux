@@ -4449,8 +4449,13 @@ process_skb:
 			 */
 			length -= 4;
 
-		if (buffer_info->rxbuf.data == NULL)
+		if (buffer_info->rxbuf.data == NULL) {
+			/* check length sanity */
+			if (skb->tail + length > skb->end) {
+				length = skb->end - skb->tail;
+			}
 			skb_put(skb, length);
+		}
 		else /* copybreak skb */
 			skb_trim(skb, length);
 
