@@ -1055,6 +1055,10 @@ static bool e1000_clean_rx_irq(struct e1000_ring *rx_ring, int *work_done,
 			}
 			/* else just continue with the old one */
 		}
+		/* check length sanity */
+		if (skb->tail + length > skb->end) {
+			length = skb->end - skb->tail;
+		}
 		/* end copybreak code */
 		skb_put(skb, length);
 
