@@ -1002,6 +1002,16 @@ ice_flow_rem_entry_sync(struct ice_hw *hw, enum ice_block blk,
 		return ICE_ERR_BAD_PTR;
 
 	if (blk == ICE_BLK_ACL) {
+		enum ice_status status;
+
+		if (!entry->prof)
+			return ICE_ERR_BAD_PTR;
+
+		status = ice_acl_rem_entry(hw, entry->prof->cfg.scen,
+					   entry->scen_entry_idx);
+		if (status)
+			return status;
+
 		/* Checks if we need to release an ACL counter. */
 		if (entry->acts_cnt && entry->acts)
 			ice_flow_acl_free_act_cntr(hw, entry->acts,
@@ -1126,10 +1136,36 @@ ice_flow_rem_prof_sync(struct ice_hw *hw, enum ice_block blk,
 	}
 
 	if (blk == ICE_BLK_ACL) {
+		struct ice_aqc_acl_profile_ranges query_rng_buf;
+		struct ice_aqc_acl_prof_generic_frmt buf;
+		u8 prof_id = 0;
+
 		/* Disassociate the scenario from the profile for the PF */
 		status = ice_flow_acl_disassoc_scen(hw, prof);
 		if (status)
 			return status;
+
+		/* Clear the range-checker if the profile ID is no longer
+		 * used by any PF
+		 */
+		status = ice_flow_acl_is_prof_in_use(hw, prof, &buf);
+		if (status && status != ICE_ERR_IN_USE) {
+			return status;
+		} else if (!status) {
+			/* Clear the range-checker value for profile ID */
+			memset(&query_rng_buf, 0,
+			       sizeof(struct ice_aqc_acl_profile_ranges));
+
+			status = ice_flow_get_hw_prof(hw, blk, prof->id,
+						      &prof_id);
+			if (status)
+				return status;
+
+			status = ice_prog_acl_prof_ranges(hw, prof_id,
+							  &query_rng_buf, NULL);
+			if (status)
+				return status;
+		}
 	}
 
 	/* Remove all hardware profiles associated with this flow profile */
@@ -1364,6 +1400,44 @@ out:
 	mutex_unlock(&hw->fl_profs_locks[blk]);
 
 	return status;
+}
+
+/**
+ * ice_flow_find_entry - look for a flow entry using its unique ID
+ * @hw: pointer to the HW struct
+ * @blk: classification stage
+ * @entry_id: unique ID to identify this flow entry
+ *
+ * This function looks for the flow entry with the specified unique ID in all
+ * flow profiles of the specified classification stage. If the entry is found,
+ * and it returns the handle to the flow entry. Otherwise, it returns
+ * ICE_FLOW_ENTRY_ID_INVAL.
+ */
+u64 ice_flow_find_entry(struct ice_hw *hw, enum ice_block blk, u64 entry_id)
+{
+	struct ice_flow_entry *found = NULL;
+	struct ice_flow_prof *p;
+
+	mutex_lock(&hw->fl_profs_locks[blk]);
+
+	list_for_each_entry(p, &hw->fl_profs[blk], l_entry) {
+		struct ice_flow_entry *e;
+
+		mutex_lock(&p->entries_lock);
+		list_for_each_entry(e, &p->entries, l_entry)
+			if (e->id == entry_id) {
+				found = e;
+				break;
+			}
+		mutex_unlock(&p->entries_lock);
+
+		if (found)
+			break;
+	}
+
+	mutex_unlock(&hw->fl_profs_locks[blk]);
+
+	return found ? ICE_FLOW_ENTRY_HNDL(found) : ICE_FLOW_ENTRY_HANDLE_INVAL;
 }
 
 /**
@@ -1701,6 +1775,333 @@ out:
 
 	return status;
 }
+
+/**
+ * ice_flow_acl_find_scen_entry_cond - Find an ACL scenario entry that matches
+ *				       the compared data.
+ * @prof: pointer to flow profile
+ * @e: pointer to the comparing flow entry
+ * @do_chg_action: decide if we want to change the ACL action
+ * @do_add_entry: decide if we want to add the new ACL entry
+ * @do_rem_entry: decide if we want to remove the current ACL entry
+ *
+ * Find an ACL scenario entry that matches the compared data. In the same time,
+ * this function also figure out:
+ * a/ If we want to change the ACL action
+ * b/ If we want to add the new ACL entry
+ * c/ If we want to remove the current ACL entry
+ */
+static struct ice_flow_entry *
+ice_flow_acl_find_scen_entry_cond(struct ice_flow_prof *prof,
+				  struct ice_flow_entry *e, bool *do_chg_action,
+				  bool *do_add_entry, bool *do_rem_entry)
+{
+	struct ice_flow_entry *p, *return_entry = NULL;
+	u8 i, j;
+
+	/* Check if:
+	 * a/ There exists an entry with same matching data, but different
+	 *    priority, then we remove this existing ACL entry. Then, we
+	 *    will add the new entry to the ACL scenario.
+	 * b/ There exists an entry with same matching data, priority, and
+	 *    result action, then we do nothing
+	 * c/ There exists an entry with same matching data, priority, but
+	 *    different, action, then do only change the action's entry.
+	 * d/ Else, we add this new entry to the ACL scenario.
+	 */
+	*do_chg_action = false;
+	*do_add_entry = true;
+	*do_rem_entry = false;
+	list_for_each_entry(p, &prof->entries, l_entry) {
+		if (memcmp(p->entry, e->entry, p->entry_sz))
+			continue;
+
+		/* From this point, we have the same matching_data. */
+		*do_add_entry = false;
+		return_entry = p;
+
+		if (p->priority != e->priority) {
+			/* matching data && !priority */
+			*do_add_entry = true;
+			*do_rem_entry = true;
+			break;
+		}
+
+		/* From this point, we will have matching_data && priority */
+		if (p->acts_cnt != e->acts_cnt)
+			*do_chg_action = true;
+		for (i = 0; i < p->acts_cnt; i++) {
+			bool found_not_match = false;
+
+			for (j = 0; j < e->acts_cnt; j++)
+				if (memcmp(&p->acts[i], &e->acts[j],
+					   sizeof(struct ice_flow_action))) {
+					found_not_match = true;
+					break;
+				}
+
+			if (found_not_match) {
+				*do_chg_action = true;
+				break;
+			}
+		}
+
+		/* (do_chg_action = true) means :
+		 *    matching_data && priority && !result_action
+		 * (do_chg_action = false) means :
+		 *    matching_data && priority && result_action
+		 */
+		break;
+	}
+
+	return return_entry;
+}
+
+/**
+ * ice_flow_acl_convert_to_acl_prio - Convert to ACL priority
+ * @p: flow priority
+ */
+static enum ice_acl_entry_prio
+ice_flow_acl_convert_to_acl_prio(enum ice_flow_priority p)
+{
+	enum ice_acl_entry_prio acl_prio;
+
+	switch (p) {
+	case ICE_FLOW_PRIO_LOW:
+		acl_prio = ICE_ACL_PRIO_LOW;
+		break;
+	case ICE_FLOW_PRIO_NORMAL:
+		acl_prio = ICE_ACL_PRIO_NORMAL;
+		break;
+	case ICE_FLOW_PRIO_HIGH:
+		acl_prio = ICE_ACL_PRIO_HIGH;
+		break;
+	default:
+		acl_prio = ICE_ACL_PRIO_NORMAL;
+		break;
+	}
+
+	return acl_prio;
+}
+
+/**
+ * ice_flow_acl_union_rng_chk - Perform union operation between two
+ *                              range-range checker buffers
+ * @dst_buf: pointer to destination range checker buffer
+ * @src_buf: pointer to source range checker buffer
+ *
+ * For this function, we do the union between dst_buf and src_buf
+ * range checker buffer, and we will save the result back to dst_buf
+ */
+static enum ice_status
+ice_flow_acl_union_rng_chk(struct ice_aqc_acl_profile_ranges *dst_buf,
+			   struct ice_aqc_acl_profile_ranges *src_buf)
+{
+	u8 i, j;
+
+	if (!dst_buf || !src_buf)
+		return ICE_ERR_BAD_PTR;
+
+	for (i = 0; i < ICE_AQC_ACL_PROF_RANGES_NUM_CFG; i++) {
+		struct ice_acl_rng_data *cfg_data = NULL, *in_data;
+		bool will_populate = false;
+
+		in_data = &src_buf->checker_cfg[i];
+
+		if (!in_data->mask)
+			break;
+
+		for (j = 0; j < ICE_AQC_ACL_PROF_RANGES_NUM_CFG; j++) {
+			cfg_data = &dst_buf->checker_cfg[j];
+
+			if (!cfg_data->mask ||
+			    !memcmp(cfg_data, in_data,
+				    sizeof(struct ice_acl_rng_data))) {
+				will_populate = true;
+				break;
+			}
+		}
+
+		if (will_populate) {
+			memcpy(cfg_data, in_data,
+			       sizeof(struct ice_acl_rng_data));
+		} else {
+			/* No available slot left to program range checker */
+			return ICE_ERR_MAX_LIMIT;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * ice_flow_acl_add_scen_entry_sync - Add entry to ACL scenario sync
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ * @entry: double pointer to the flow entry
+ *
+ * For this function, we will look at the current added entries in the
+ * corresponding ACL scenario. Then, we will perform matching logic to
+ * see if we want to add/modify/do nothing with this new entry.
+ */
+static enum ice_status
+ice_flow_acl_add_scen_entry_sync(struct ice_hw *hw, struct ice_flow_prof *prof,
+				 struct ice_flow_entry **entry)
+{
+	bool do_add_entry, do_rem_entry, do_chg_action, do_chg_rng_chk;
+	struct ice_aqc_acl_profile_ranges query_rng_buf, cfg_rng_buf;
+	struct ice_acl_act_entry *acts = NULL;
+	struct ice_flow_entry *exist;
+	enum ice_status status = 0;
+	struct ice_flow_entry *e;
+	u8 i;
+
+	if (!entry || !(*entry) || !prof)
+		return ICE_ERR_BAD_PTR;
+
+	e = *entry;
+
+	do_chg_rng_chk = false;
+	if (e->range_buf) {
+		u8 prof_id = 0;
+
+		status = ice_flow_get_hw_prof(hw, ICE_BLK_ACL, prof->id,
+					      &prof_id);
+		if (status)
+			return status;
+
+		/* Query the current range-checker value in FW */
+		status = ice_query_acl_prof_ranges(hw, prof_id, &query_rng_buf,
+						   NULL);
+		if (status)
+			return status;
+		memcpy(&cfg_rng_buf, &query_rng_buf,
+		       sizeof(struct ice_aqc_acl_profile_ranges));
+
+		/* Generate the new range-checker value */
+		status = ice_flow_acl_union_rng_chk(&cfg_rng_buf, e->range_buf);
+		if (status)
+			return status;
+
+		/* Reconfigure the range check if the buffer is changed. */
+		do_chg_rng_chk = false;
+		if (memcmp(&query_rng_buf, &cfg_rng_buf,
+			   sizeof(struct ice_aqc_acl_profile_ranges))) {
+			status = ice_prog_acl_prof_ranges(hw, prof_id,
+							  &cfg_rng_buf, NULL);
+			if (status)
+				return status;
+
+			do_chg_rng_chk = true;
+		}
+	}
+
+	/* Figure out if we want to (change the ACL action) and/or
+	 * (Add the new ACL entry) and/or (Remove the current ACL entry)
+	 */
+	exist = ice_flow_acl_find_scen_entry_cond(prof, e, &do_chg_action,
+						  &do_add_entry, &do_rem_entry);
+
+	if (do_rem_entry) {
+		status = ice_flow_rem_entry_sync(hw, ICE_BLK_ACL, exist);
+		if (status)
+			return status;
+	}
+
+	/* Prepare the result action buffer */
+	acts = kcalloc(e->entry_sz, sizeof(struct ice_acl_act_entry),
+		       GFP_KERNEL);
+	if (!acts)
+		return ICE_ERR_NO_MEMORY;
+
+	for (i = 0; i < e->acts_cnt; i++)
+		memcpy(&acts[i], &e->acts[i].data.acl_act,
+		       sizeof(struct ice_acl_act_entry));
+
+	if (do_add_entry) {
+		enum ice_acl_entry_prio prio;
+		u8 *keys, *inverts;
+		u16 entry_idx;
+
+		keys = (u8 *)e->entry;
+		inverts = keys + (e->entry_sz / 2);
+		prio = ice_flow_acl_convert_to_acl_prio(e->priority);
+
+		status = ice_acl_add_entry(hw, prof->cfg.scen, prio, keys,
+					   inverts, acts, e->acts_cnt,
+					   &entry_idx);
+		if (status)
+			goto out;
+
+		e->scen_entry_idx = entry_idx;
+		list_add(&e->l_entry, &prof->entries);
+	} else {
+		if (do_chg_action) {
+			/* For the action memory info, update the SW's copy of
+			 * exist entry with e's action memory info
+			 */
+			devm_kfree(ice_hw_to_dev(hw), exist->acts);
+			exist->acts_cnt = e->acts_cnt;
+			exist->acts = devm_kcalloc(ice_hw_to_dev(hw),
+						   exist->acts_cnt,
+						   sizeof(struct ice_flow_action),
+						   GFP_KERNEL);
+			if (!exist->acts) {
+				status = ICE_ERR_NO_MEMORY;
+				goto out;
+			}
+
+			memcpy(exist->acts, e->acts,
+			       sizeof(struct ice_flow_action) * e->acts_cnt);
+
+			status = ice_acl_prog_act(hw, prof->cfg.scen, acts,
+						  e->acts_cnt,
+						  exist->scen_entry_idx);
+			if (status)
+				goto out;
+		}
+
+		if (do_chg_rng_chk) {
+			/* In this case, we want to update the range checker
+			 * information of the exist entry
+			 */
+			status = ice_flow_acl_union_rng_chk(exist->range_buf,
+							    e->range_buf);
+			if (status)
+				goto out;
+		}
+
+		/* As we don't add the new entry to our SW DB, deallocate its
+		 * memories, and return the exist entry to the caller
+		 */
+		ice_dealloc_flow_entry(hw, e);
+		*entry = exist;
+	}
+out:
+	kfree(acts);
+
+	return status;
+}
+
+/**
+ * ice_flow_acl_add_scen_entry - Add entry to ACL scenario
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ * @e: double pointer to the flow entry
+ */
+static enum ice_status
+ice_flow_acl_add_scen_entry(struct ice_hw *hw, struct ice_flow_prof *prof,
+			    struct ice_flow_entry **e)
+{
+	enum ice_status status;
+
+	mutex_lock(&prof->entries_lock);
+	status = ice_flow_acl_add_scen_entry_sync(hw, prof, e);
+	mutex_unlock(&prof->entries_lock);
+
+	return status;
+}
+
 /**
  * ice_flow_add_entry - Add a flow entry
  * @hw: pointer to the HW struct
@@ -1770,6 +2171,11 @@ ice_flow_add_entry(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
 						 acts_cnt);
 		if (status)
 			goto out;
+
+		status = ice_flow_acl_add_scen_entry(hw, prof, &e);
+		if (status)
+			goto out;
+
 		break;
 	default:
 		status = ICE_ERR_NOT_IMPL;

@@ -44,6 +44,7 @@ struct ice_acl_tbl {
 	u16 id;
 };
 
+#define ICE_MAX_ACL_TCAM_ENTRY (ICE_AQC_ACL_TCAM_DEPTH * ICE_AQC_ACL_SLICES)
 enum ice_acl_entry_prio {
 	ICE_ACL_PRIO_LOW = 0,
 	ICE_ACL_PRIO_NORMAL,
@@ -66,6 +67,11 @@ struct ice_acl_scen {
 	 * participate in this scenario
 	 */
 	DECLARE_BITMAP(act_mem_bitmap, ICE_AQC_MAX_ACTION_MEMORIES);
+
+	/* If nth bit of entry_bitmap is set, then nth entry will
+	 * be available in this scenario
+	 */
+	DECLARE_BITMAP(entry_bitmap, ICE_MAX_ACL_TCAM_ENTRY);
 	u16 first_idx[ICE_ACL_MAX_PRIO];
 	u16 last_idx[ICE_ACL_MAX_PRIO];
 
@@ -151,6 +157,14 @@ enum ice_status
 ice_aq_dealloc_acl_cntrs(struct ice_hw *hw, struct ice_acl_cntrs *cntrs,
 			 struct ice_sq_cd *cd);
 enum ice_status
+ice_prog_acl_prof_ranges(struct ice_hw *hw, u8 prof_id,
+			 struct ice_aqc_acl_profile_ranges *buf,
+			 struct ice_sq_cd *cd);
+enum ice_status
+ice_query_acl_prof_ranges(struct ice_hw *hw, u8 prof_id,
+			  struct ice_aqc_acl_profile_ranges *buf,
+			  struct ice_sq_cd *cd);
+enum ice_status
 ice_aq_alloc_acl_scen(struct ice_hw *hw, u16 *scen_id,
 		      struct ice_aqc_acl_scen *buf, struct ice_sq_cd *cd);
 enum ice_status
@@ -161,5 +175,14 @@ ice_aq_update_acl_scen(struct ice_hw *hw, u16 scen_id,
 enum ice_status
 ice_aq_query_acl_scen(struct ice_hw *hw, u16 scen_id,
 		      struct ice_aqc_acl_scen *buf, struct ice_sq_cd *cd);
+enum ice_status
+ice_acl_add_entry(struct ice_hw *hw, struct ice_acl_scen *scen,
+		  enum ice_acl_entry_prio prio, u8 *keys, u8 *inverts,
+		  struct ice_acl_act_entry *acts, u8 acts_cnt, u16 *entry_idx);
+enum ice_status
+ice_acl_prog_act(struct ice_hw *hw, struct ice_acl_scen *scen,
+		 struct ice_acl_act_entry *acts, u8 acts_cnt, u16 entry_idx);
+enum ice_status
+ice_acl_rem_entry(struct ice_hw *hw, struct ice_acl_scen *scen, u16 entry_idx);
 
 #endif /* _ICE_ACL_H_ */
