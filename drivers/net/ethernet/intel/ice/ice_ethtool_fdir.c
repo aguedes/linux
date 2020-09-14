@@ -68,7 +68,7 @@ static int ice_fltr_to_ethtool_flow(enum ice_fltr_ptype flow)
  *
  * Returns flow enum
  */
-static enum ice_fltr_ptype ice_ethtool_flow_to_fltr(int eth)
+enum ice_fltr_ptype ice_ethtool_flow_to_fltr(int eth)
 {
 	switch (eth) {
 	case TCP_V4_FLOW:
@@ -774,6 +774,56 @@ err_exit:
 }
 
 /**
+ * ice_ntuple_check_ip4_seg - Check valid fields are provided for filter
+ * @tcp_ip4_spec: mask data from ethtool
+ */
+int ice_ntuple_check_ip4_seg(struct ethtool_tcpip4_spec *tcp_ip4_spec)
+{
+	if (!tcp_ip4_spec)
+		return -EINVAL;
+
+	/* make sure we don't have any empty rule */
+	if (!tcp_ip4_spec->psrc && !tcp_ip4_spec->ip4src &&
+	    !tcp_ip4_spec->pdst && !tcp_ip4_spec->ip4dst)
+		return -EINVAL;
+
+	/* filtering on TOS not supported */
+	if (tcp_ip4_spec->tos)
+		return -EOPNOTSUPP;
+
+	return 0;
+}
+
+/**
+ * ice_ntuple_l4_proto_to_port
+ * @l4_proto: Layer 4 protocol to program
+ * @src_port: source flow field value for provided l4 protocol
+ * @dst_port: destination flow field value for provided l4 protocol
+ *
+ * Set associated src and dst port for given l4 protocol
+ */
+int
+ice_ntuple_l4_proto_to_port(enum ice_flow_seg_hdr l4_proto,
+			    enum ice_flow_field *src_port,
+			    enum ice_flow_field *dst_port)
+{
+	if (l4_proto == ICE_FLOW_SEG_HDR_TCP) {
+		*src_port = ICE_FLOW_FIELD_IDX_TCP_SRC_PORT;
+		*dst_port = ICE_FLOW_FIELD_IDX_TCP_DST_PORT;
+	} else if (l4_proto == ICE_FLOW_SEG_HDR_UDP) {
+		*src_port = ICE_FLOW_FIELD_IDX_UDP_SRC_PORT;
+		*dst_port = ICE_FLOW_FIELD_IDX_UDP_DST_PORT;
+	} else if (l4_proto == ICE_FLOW_SEG_HDR_SCTP) {
+		*src_port = ICE_FLOW_FIELD_IDX_SCTP_SRC_PORT;
+		*dst_port = ICE_FLOW_FIELD_IDX_SCTP_DST_PORT;
+	} else {
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+/**
  * ice_set_fdir_ip4_seg
  * @seg: flow segment for programming
  * @tcp_ip4_spec: mask data from ethtool
@@ -790,28 +840,18 @@ ice_set_fdir_ip4_seg(struct ice_flow_seg_info *seg,
 		     enum ice_flow_seg_hdr l4_proto, bool *perfect_fltr)
 {
 	enum ice_flow_field src_port, dst_port;
+	int ret;
 
-	/* make sure we don't have any empty rule */
-	if (!tcp_ip4_spec->psrc && !tcp_ip4_spec->ip4src &&
-	    !tcp_ip4_spec->pdst && !tcp_ip4_spec->ip4dst)
+	if (!seg || !perfect_fltr)
 		return -EINVAL;
 
-	/* filtering on TOS not supported */
-	if (tcp_ip4_spec->tos)
-		return -EOPNOTSUPP;
+	ret = ice_ntuple_check_ip4_seg(tcp_ip4_spec);
+	if (ret)
+		return ret;
 
-	if (l4_proto == ICE_FLOW_SEG_HDR_TCP) {
-		src_port = ICE_FLOW_FIELD_IDX_TCP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_TCP_DST_PORT;
-	} else if (l4_proto == ICE_FLOW_SEG_HDR_UDP) {
-		src_port = ICE_FLOW_FIELD_IDX_UDP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_UDP_DST_PORT;
-	} else if (l4_proto == ICE_FLOW_SEG_HDR_SCTP) {
-		src_port = ICE_FLOW_FIELD_IDX_SCTP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_SCTP_DST_PORT;
-	} else {
-		return -EOPNOTSUPP;
-	}
+	ret = ice_ntuple_l4_proto_to_port(l4_proto, &src_port, &dst_port);
+	if (ret)
+		return ret;
 
 	*perfect_fltr = true;
 	ICE_FLOW_SET_HDRS(seg, ICE_FLOW_SEG_HDR_IPV4 | l4_proto);
@@ -860,20 +900,14 @@ ice_set_fdir_ip4_seg(struct ice_flow_seg_info *seg,
 }
 
 /**
- * ice_set_fdir_ip4_usr_seg
- * @seg: flow segment for programming
+ * ice_ntuple_check_ip4_usr_seg - Check valid fields are provided for filter
  * @usr_ip4_spec: ethtool userdef packet offset
- * @perfect_fltr: only valid on success; returns true if perfect filter,
- *		  false if not
- *
- * Set the offset data into the flow segment to be used to program HW
- * table for IPv4
  */
-static int
-ice_set_fdir_ip4_usr_seg(struct ice_flow_seg_info *seg,
-			 struct ethtool_usrip4_spec *usr_ip4_spec,
-			 bool *perfect_fltr)
+int ice_ntuple_check_ip4_usr_seg(struct ethtool_usrip4_spec *usr_ip4_spec)
 {
+	if (!usr_ip4_spec)
+		return -EINVAL;
+
 	/* first 4 bytes of Layer 4 header */
 	if (usr_ip4_spec->l4_4_bytes)
 		return -EINVAL;
@@ -887,6 +921,33 @@ ice_set_fdir_ip4_usr_seg(struct ice_flow_seg_info *seg,
 	/* empty rules are not valid */
 	if (!usr_ip4_spec->ip4src && !usr_ip4_spec->ip4dst)
 		return -EINVAL;
+
+	return 0;
+}
+
+/**
+ * ice_set_fdir_ip4_usr_seg
+ * @seg: flow segment for programming
+ * @usr_ip4_spec: ethtool userdef packet offset
+ * @perfect_fltr: only set on success; returns true if perfect filter, false if
+ *		  not
+ *
+ * Set the offset data into the flow segment to be used to program HW
+ * table for IPv4
+ */
+static int
+ice_set_fdir_ip4_usr_seg(struct ice_flow_seg_info *seg,
+			 struct ethtool_usrip4_spec *usr_ip4_spec,
+			 bool *perfect_fltr)
+{
+	int ret;
+
+	if (!seg || !perfect_fltr)
+		return -EINVAL;
+
+	ret = ice_ntuple_check_ip4_usr_seg(usr_ip4_spec);
+	if (ret)
+		return ret;
 
 	*perfect_fltr = true;
 	ICE_FLOW_SET_HDRS(seg, ICE_FLOW_SEG_HDR_IPV4);
@@ -915,6 +976,30 @@ ice_set_fdir_ip4_usr_seg(struct ice_flow_seg_info *seg,
 }
 
 /**
+ * ice_ntuple_check_ip6_seg - Check valid fields are provided for filter
+ * @tcp_ip6_spec: mask data from ethtool
+ */
+static int ice_ntuple_check_ip6_seg(struct ethtool_tcpip6_spec *tcp_ip6_spec)
+{
+	if (!tcp_ip6_spec)
+		return -EINVAL;
+
+	/* make sure we don't have any empty rule */
+	if (!memcmp(tcp_ip6_spec->ip6src, &zero_ipv6_addr_mask,
+		    sizeof(struct in6_addr)) &&
+	    !memcmp(tcp_ip6_spec->ip6dst, &zero_ipv6_addr_mask,
+		    sizeof(struct in6_addr)) &&
+	    !tcp_ip6_spec->psrc && !tcp_ip6_spec->pdst)
+		return -EINVAL;
+
+	/* filtering on TC not supported */
+	if (tcp_ip6_spec->tclass)
+		return -EOPNOTSUPP;
+
+	return 0;
+}
+
+/**
  * ice_set_fdir_ip6_seg
  * @seg: flow segment for programming
  * @tcp_ip6_spec: mask data from ethtool
@@ -931,31 +1016,18 @@ ice_set_fdir_ip6_seg(struct ice_flow_seg_info *seg,
 		     enum ice_flow_seg_hdr l4_proto, bool *perfect_fltr)
 {
 	enum ice_flow_field src_port, dst_port;
+	int ret;
 
-	/* make sure we don't have any empty rule */
-	if (!memcmp(tcp_ip6_spec->ip6src, &zero_ipv6_addr_mask,
-		    sizeof(struct in6_addr)) &&
-	    !memcmp(tcp_ip6_spec->ip6dst, &zero_ipv6_addr_mask,
-		    sizeof(struct in6_addr)) &&
-	    !tcp_ip6_spec->psrc && !tcp_ip6_spec->pdst)
+	if (!seg || !perfect_fltr)
 		return -EINVAL;
 
-	/* filtering on TC not supported */
-	if (tcp_ip6_spec->tclass)
-		return -EOPNOTSUPP;
+	ret = ice_ntuple_check_ip6_seg(tcp_ip6_spec);
+	if (ret)
+		return ret;
 
-	if (l4_proto == ICE_FLOW_SEG_HDR_TCP) {
-		src_port = ICE_FLOW_FIELD_IDX_TCP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_TCP_DST_PORT;
-	} else if (l4_proto == ICE_FLOW_SEG_HDR_UDP) {
-		src_port = ICE_FLOW_FIELD_IDX_UDP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_UDP_DST_PORT;
-	} else if (l4_proto == ICE_FLOW_SEG_HDR_SCTP) {
-		src_port = ICE_FLOW_FIELD_IDX_SCTP_SRC_PORT;
-		dst_port = ICE_FLOW_FIELD_IDX_SCTP_DST_PORT;
-	} else {
-		return -EINVAL;
-	}
+	ret = ice_ntuple_l4_proto_to_port(l4_proto, &src_port, &dst_port);
+	if (ret)
+		return ret;
 
 	*perfect_fltr = true;
 	ICE_FLOW_SET_HDRS(seg, ICE_FLOW_SEG_HDR_IPV6 | l4_proto);
@@ -1006,20 +1078,15 @@ ice_set_fdir_ip6_seg(struct ice_flow_seg_info *seg,
 }
 
 /**
- * ice_set_fdir_ip6_usr_seg
- * @seg: flow segment for programming
+ * ice_ntuple_check_ip6_usr_seg - Check valid fields are provided for filter
  * @usr_ip6_spec: ethtool userdef packet offset
- * @perfect_fltr: only valid on success; returns true if perfect filter,
- *		  false if not
- *
- * Set the offset data into the flow segment to be used to program HW
- * table for IPv6
  */
 static int
-ice_set_fdir_ip6_usr_seg(struct ice_flow_seg_info *seg,
-			 struct ethtool_usrip6_spec *usr_ip6_spec,
-			 bool *perfect_fltr)
+ice_ntuple_check_ip6_usr_seg(struct ethtool_usrip6_spec *usr_ip6_spec)
 {
+	if (!usr_ip6_spec)
+		return -EINVAL;
+
 	/* filtering on Layer 4 bytes not supported */
 	if (usr_ip6_spec->l4_4_bytes)
 		return -EOPNOTSUPP;
@@ -1035,6 +1102,33 @@ ice_set_fdir_ip6_usr_seg(struct ice_flow_seg_info *seg,
 	    !memcmp(usr_ip6_spec->ip6dst, &zero_ipv6_addr_mask,
 		    sizeof(struct in6_addr)))
 		return -EINVAL;
+
+	return 0;
+}
+
+/**
+ * ice_set_fdir_ip6_usr_seg
+ * @seg: flow segment for programming
+ * @usr_ip6_spec: ethtool userdef packet offset
+ * @perfect_fltr: only set on success; returns true if perfect filter, false if
+ *		  not
+ *
+ * Set the offset data into the flow segment to be used to program HW
+ * table for IPv6
+ */
+static int
+ice_set_fdir_ip6_usr_seg(struct ice_flow_seg_info *seg,
+			 struct ethtool_usrip6_spec *usr_ip6_spec,
+			 bool *perfect_fltr)
+{
+	int ret;
+
+	if (!seg || !perfect_fltr)
+		return -EINVAL;
+
+	ret = ice_ntuple_check_ip6_usr_seg(usr_ip6_spec);
+	if (ret)
+		return ret;
 
 	*perfect_fltr = true;
 	ICE_FLOW_SET_HDRS(seg, ICE_FLOW_SEG_HDR_IPV6);
@@ -1490,6 +1584,64 @@ int ice_del_ntuple_ethtool(struct ice_vsi *vsi, struct ethtool_rxnfc *cmd)
 }
 
 /**
+ * ice_is_acl_filter - Checks if it's a FD or ACL filter
+ * @fsp: pointer to ethtool Rx flow specification
+ *
+ * If any field of the provided filter is using a partial mask then this is
+ * an ACL filter.
+ *
+ * Returns true if ACL filter otherwise false.
+ */
+static bool ice_is_acl_filter(struct ethtool_rx_flow_spec *fsp)
+{
+	struct ethtool_tcpip4_spec *tcp_ip4_spec;
+	struct ethtool_usrip4_spec *usr_ip4_spec;
+
+	switch (fsp->flow_type & ~FLOW_EXT) {
+	case TCP_V4_FLOW:
+	case UDP_V4_FLOW:
+	case SCTP_V4_FLOW:
+		tcp_ip4_spec = &fsp->m_u.tcp_ip4_spec;
+
+		/* IP source address */
+		if (tcp_ip4_spec->ip4src &&
+		    tcp_ip4_spec->ip4src != htonl(0xFFFFFFFF))
+			return true;
+
+		/* IP destination address */
+		if (tcp_ip4_spec->ip4dst &&
+		    tcp_ip4_spec->ip4dst != htonl(0xFFFFFFFF))
+			return true;
+
+		/* Layer 4 source port */
+		if (tcp_ip4_spec->psrc && tcp_ip4_spec->psrc != htons(0xFFFF))
+			return true;
+
+		/* Layer 4 destination port */
+		if (tcp_ip4_spec->pdst && tcp_ip4_spec->pdst != htons(0xFFFF))
+			return true;
+
+		break;
+	case IPV4_USER_FLOW:
+		usr_ip4_spec = &fsp->m_u.usr_ip4_spec;
+
+		/* IP source address */
+		if (usr_ip4_spec->ip4src &&
+		    usr_ip4_spec->ip4src != htonl(0xFFFFFFFF))
+			return true;
+
+		/* IP destination address */
+		if (usr_ip4_spec->ip4dst &&
+		    usr_ip4_spec->ip4dst != htonl(0xFFFFFFFF))
+			return true;
+
+		break;
+	}
+
+	return false;
+}
+
+/**
  * ice_ntuple_set_input_set - Set the input set for Flow Director
  * @vsi: pointer to target VSI
  * @fsp: pointer to ethtool Rx flow specification
@@ -1651,7 +1803,7 @@ int ice_add_ntuple_ethtool(struct ice_vsi *vsi, struct ethtool_rxnfc *cmd)
 
 	/* Do not program filters during reset */
 	if (ice_is_reset_in_progress(pf->state)) {
-		dev_err(dev, "Device is resetting - adding Flow Director filters not supported during reset\n");
+		dev_err(dev, "Device is resetting - adding ntuple filters not supported during reset\n");
 		return -EBUSY;
 	}
 
@@ -1663,14 +1815,18 @@ int ice_add_ntuple_ethtool(struct ice_vsi *vsi, struct ethtool_rxnfc *cmd)
 	if (fsp->flow_type & FLOW_MAC_EXT)
 		return -EINVAL;
 
+	if (fsp->location >= ice_ntuple_get_max_fltr_cnt(hw)) {
+		dev_err(dev, "Failed to add filter.  The maximum number of ntuple filters has been reached.\n");
+		return -ENOSPC;
+	}
+
+	/* ACL filter */
+	if (pf->hw.acl_tbl && ice_is_acl_filter(fsp))
+		return ice_acl_add_rule_ethtool(vsi, cmd);
+
 	ret = ice_cfg_fdir_xtrct_seq(pf, fsp, &userdata);
 	if (ret)
 		return ret;
-
-	if (fsp->location >= ice_ntuple_get_max_fltr_cnt(hw)) {
-		dev_err(dev, "Failed to add filter.  The maximum number of flow director filters has been reached.\n");
-		return -ENOSPC;
-	}
 
 	/* return error if not an update and no available filters */
 	fltrs_needed = ice_get_open_tunnel_port(hw, &tunnel_port) ? 2 : 1;
