@@ -20,6 +20,8 @@ ice-y := ice_main.o	\
 	 ice_fltr.o	\
 	 ice_fdir.o	\
 	 ice_ethtool_fdir.o \
+	 ice_acl.o	\
+	 ice_acl_ctrl.o	\
 	 ice_flex_pipe.o \
 	 ice_flow.o	\
 	 ice_devlink.o	\
