@@ -1483,6 +1483,22 @@ release_lock:
 }
 
 /**
+ * ice_del_acl_ethtool - Deletes an ACL rule entry.
+ * @hw: pointer to HW instance
+ * @fltr: filter structure
+ *
+ * returns 0 on success and negative value on error
+ */
+static int
+ice_del_acl_ethtool(struct ice_hw *hw, struct ice_fdir_fltr *fltr)
+{
+	u64 entry;
+
+	entry = ice_flow_find_entry(hw, ICE_BLK_ACL, fltr->fltr_id);
+	return ice_status_to_errno(ice_flow_rem_entry(hw, ICE_BLK_ACL, entry));
+}
+
+/**
  * ice_fdir_do_rem_flow - delete flow and possibly add perfect flow
  * @pf: PF structure
  * @flow_type: FDir flow type to release
@@ -1515,7 +1531,7 @@ ice_fdir_do_rem_flow(struct ice_pf *pf, enum ice_fltr_ptype flow_type)
  *
  * returns 0 on success and negative on errors
  */
-static int
+int
 ice_ntuple_update_list_entry(struct ice_pf *pf, struct ice_fdir_fltr *input,
 			     int fltr_idx)
 {
@@ -1529,18 +1545,40 @@ ice_ntuple_update_list_entry(struct ice_pf *pf, struct ice_fdir_fltr *input,
 
 	old_fltr = ice_fdir_find_fltr_by_idx(hw, fltr_idx);
 	if (old_fltr) {
-		err = ice_fdir_write_all_fltr(pf, old_fltr, false);
-		if (err)
-			return err;
-		ice_fdir_update_cntrs(hw, old_fltr->flow_type,
-				      false, false);
-		if (!input && !hw->fdir_fltr_cnt[old_fltr->flow_type])
-			/* we just deleted the last filter of flow_type so we
-			 * should also delete the HW filter info.
+		if (!old_fltr->acl_fltr) {
+			/* FD filter */
+			err = ice_fdir_write_all_fltr(pf, old_fltr, false);
+			if (err)
+				return err;
+		} else {
+			/* ACL filter - if the input buffer is present
+			 * then this is an update and we don't want to
+			 * delete the filter from the HW. we've already
+			 * written the change to the HW at this point, so
+			 * just update the SW structures to make sure
+			 * everything is hunky-dory. if no input then this
+			 * is a delete so we should delete the filter from
+			 * the HW and clean up our SW structures.
 			 */
+			if (!input) {
+				err = ice_del_acl_ethtool(hw, old_fltr);
+				if (err)
+					return err;
+			}
+		}
+		ice_fdir_update_cntrs(hw, old_fltr->flow_type,
+				      old_fltr->acl_fltr, false);
+		/* Also delete the HW filter info if we have just deleted the
+		 * last filter of flow_type.
+		 */
+		if (!old_fltr->acl_fltr && !input &&
+		    !hw->fdir_fltr_cnt[old_fltr->flow_type])
 			ice_fdir_do_rem_flow(pf, old_fltr->flow_type);
+		else if (old_fltr->acl_fltr && !input &&
+			 !hw->acl_fltr_cnt[old_fltr->flow_type])
+			ice_fdir_rem_flow(hw, ICE_BLK_ACL, old_fltr->flow_type);
 		list_del(&old_fltr->fltr_node);
-		devm_kfree(ice_hw_to_dev(hw), old_fltr);
+		devm_kfree(ice_pf_to_dev(pf), old_fltr);
 	}
 	if (!input)
 		return err;

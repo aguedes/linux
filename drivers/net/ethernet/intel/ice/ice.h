@@ -620,6 +620,9 @@ int ice_fdir_create_dflt_rules(struct ice_pf *pf);
 enum ice_fltr_ptype ice_ethtool_flow_to_fltr(int eth);
 int ice_aq_wait_for_event(struct ice_pf *pf, u16 opcode, unsigned long timeout,
 			  struct ice_rq_event_info *event);
+int
+ice_ntuple_update_list_entry(struct ice_pf *pf, struct ice_fdir_fltr *input,
+			     int fltr_idx);
 int ice_open(struct net_device *netdev);
 int ice_stop(struct net_device *netdev);
 void ice_service_task_schedule(struct ice_pf *pf);
