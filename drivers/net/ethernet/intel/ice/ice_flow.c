@@ -833,7 +833,159 @@ ice_dealloc_flow_entry(struct ice_hw *hw, struct ice_flow_entry *entry)
 	if (entry->entry)
 		devm_kfree(ice_hw_to_dev(hw), entry->entry);
 
+	if (entry->range_buf) {
+		devm_kfree(ice_hw_to_dev(hw), entry->range_buf);
+		entry->range_buf = NULL;
+	}
+
+	if (entry->acts) {
+		devm_kfree(ice_hw_to_dev(hw), entry->acts);
+		entry->acts = NULL;
+		entry->acts_cnt = 0;
+	}
+
 	devm_kfree(ice_hw_to_dev(hw), entry);
+}
+
+/**
+ * ice_flow_get_hw_prof - return the HW profile for a specific profile ID handle
+ * @hw: pointer to the HW struct
+ * @blk: classification stage
+ * @prof_id: the profile ID handle
+ * @hw_prof_id: pointer to variable to receive the HW profile ID
+ */
+static enum ice_status
+ice_flow_get_hw_prof(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
+		     u8 *hw_prof_id)
+{
+	enum ice_status status = ICE_ERR_DOES_NOT_EXIST;
+	struct ice_prof_map *map;
+
+	mutex_lock(&hw->blk[blk].es.prof_map_lock);
+	map = ice_search_prof_id(hw, blk, prof_id);
+	if (map) {
+		*hw_prof_id = map->prof_id;
+		status = 0;
+	}
+	mutex_unlock(&hw->blk[blk].es.prof_map_lock);
+	return status;
+}
+
+#define ICE_ACL_INVALID_SCEN	0x3f
+
+/**
+ * ice_flow_acl_is_prof_in_use - Verify if the profile is associated to any PF
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ * @buf: destination buffer function writes partial extraction sequence to
+ *
+ * returns ICE_SUCCESS if no PF is associated to the given profile
+ * returns ICE_ERR_IN_USE if at least one PF is associated to the given profile
+ * returns other error code for real error
+ */
+static enum ice_status
+ice_flow_acl_is_prof_in_use(struct ice_hw *hw, struct ice_flow_prof *prof,
+			    struct ice_aqc_acl_prof_generic_frmt *buf)
+{
+	enum ice_status status;
+	u8 prof_id = 0;
+
+	status = ice_flow_get_hw_prof(hw, ICE_BLK_ACL, prof->id, &prof_id);
+	if (status)
+		return status;
+
+	status = ice_query_acl_prof(hw, prof_id, buf, NULL);
+	if (status)
+		return status;
+
+	/* If all PF's associated scenarios are all 0 or all
+	 * ICE_ACL_INVALID_SCEN (63) for the given profile then the latter has
+	 * not been configured yet.
+	 */
+	if (buf->pf_scenario_num[0] == 0 && buf->pf_scenario_num[1] == 0 &&
+	    buf->pf_scenario_num[2] == 0 && buf->pf_scenario_num[3] == 0 &&
+	    buf->pf_scenario_num[4] == 0 && buf->pf_scenario_num[5] == 0 &&
+	    buf->pf_scenario_num[6] == 0 && buf->pf_scenario_num[7] == 0)
+		return 0;
+
+	if (buf->pf_scenario_num[0] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[1] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[2] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[3] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[4] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[5] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[6] == ICE_ACL_INVALID_SCEN &&
+	    buf->pf_scenario_num[7] == ICE_ACL_INVALID_SCEN)
+		return 0;
+
+	return ICE_ERR_IN_USE;
+}
+
+/**
+ * ice_flow_acl_free_act_cntr - Free the ACL rule's actions
+ * @hw: pointer to the hardware structure
+ * @acts: array of actions to be performed on a match
+ * @acts_cnt: number of actions
+ */
+static enum ice_status
+ice_flow_acl_free_act_cntr(struct ice_hw *hw, struct ice_flow_action *acts,
+			   u8 acts_cnt)
+{
+	int i;
+
+	for (i = 0; i < acts_cnt; i++) {
+		if (acts[i].type == ICE_FLOW_ACT_CNTR_PKT ||
+		    acts[i].type == ICE_FLOW_ACT_CNTR_BYTES ||
+		    acts[i].type == ICE_FLOW_ACT_CNTR_PKT_BYTES) {
+			struct ice_acl_cntrs cntrs;
+			enum ice_status status;
+
+			cntrs.bank = 0; /* Only bank0 for the moment */
+			cntrs.first_cntr =
+					le16_to_cpu(acts[i].data.acl_act.value);
+			cntrs.last_cntr =
+					le16_to_cpu(acts[i].data.acl_act.value);
+
+			if (acts[i].type == ICE_FLOW_ACT_CNTR_PKT_BYTES)
+				cntrs.type = ICE_AQC_ACL_CNT_TYPE_DUAL;
+			else
+				cntrs.type = ICE_AQC_ACL_CNT_TYPE_SINGLE;
+
+			status = ice_aq_dealloc_acl_cntrs(hw, &cntrs, NULL);
+			if (status)
+				return status;
+		}
+	}
+	return 0;
+}
+
+/**
+ * ice_flow_acl_disassoc_scen - Disassociate the scenario from the profile
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ *
+ * Disassociate the scenario from the profile for the PF of the VSI.
+ */
+static enum ice_status
+ice_flow_acl_disassoc_scen(struct ice_hw *hw, struct ice_flow_prof *prof)
+{
+	struct ice_aqc_acl_prof_generic_frmt buf;
+	enum ice_status status = 0;
+	u8 prof_id = 0;
+
+	memset(&buf, 0, sizeof(buf));
+
+	status = ice_flow_get_hw_prof(hw, ICE_BLK_ACL, prof->id, &prof_id);
+	if (status)
+		return status;
+
+	status = ice_query_acl_prof(hw, prof_id, &buf, NULL);
+	if (status)
+		return status;
+
+	/* Clear scenario for this PF */
+	buf.pf_scenario_num[hw->pf_id] = ICE_ACL_INVALID_SCEN;
+	return ice_prgm_acl_prof_xtrct(hw, prof_id, &buf, NULL);
 }
 
 /**
@@ -843,11 +995,18 @@ ice_dealloc_flow_entry(struct ice_hw *hw, struct ice_flow_entry *entry)
  * @entry: flow entry to be removed
  */
 static enum ice_status
-ice_flow_rem_entry_sync(struct ice_hw *hw, enum ice_block __always_unused blk,
+ice_flow_rem_entry_sync(struct ice_hw *hw, enum ice_block blk,
 			struct ice_flow_entry *entry)
 {
 	if (!entry)
 		return ICE_ERR_BAD_PTR;
+
+	if (blk == ICE_BLK_ACL) {
+		/* Checks if we need to release an ACL counter. */
+		if (entry->acts_cnt && entry->acts)
+			ice_flow_acl_free_act_cntr(hw, entry->acts,
+						   entry->acts_cnt);
+	}
 
 	list_del(&entry->l_entry);
 
@@ -966,6 +1125,13 @@ ice_flow_rem_prof_sync(struct ice_hw *hw, enum ice_block blk,
 		mutex_unlock(&prof->entries_lock);
 	}
 
+	if (blk == ICE_BLK_ACL) {
+		/* Disassociate the scenario from the profile for the PF */
+		status = ice_flow_acl_disassoc_scen(hw, prof);
+		if (status)
+			return status;
+	}
+
 	/* Remove all hardware profiles associated with this flow profile */
 	status = ice_rem_prof(hw, blk, prof->id);
 	if (!status) {
@@ -975,6 +1141,89 @@ ice_flow_rem_prof_sync(struct ice_hw *hw, enum ice_block blk,
 	}
 
 	return status;
+}
+
+/**
+ * ice_flow_acl_set_xtrct_seq_fld - Populate xtrct seq for single field
+ * @buf: Destination buffer function writes partial xtrct sequence to
+ * @info: Info about field
+ */
+static void
+ice_flow_acl_set_xtrct_seq_fld(struct ice_aqc_acl_prof_generic_frmt *buf,
+			       struct ice_flow_fld_info *info)
+{
+	u16 dst, i;
+	u8 src;
+
+	src = info->xtrct.idx * ICE_FLOW_FV_EXTRACT_SZ +
+		info->xtrct.disp / BITS_PER_BYTE;
+	dst = info->entry.val;
+	for (i = 0; i < info->entry.last; i++)
+		/* HW stores field vector words in LE, convert words back to BE
+		 * so constructed entries will end up in network order
+		 */
+		buf->byte_selection[dst++] = src++ ^ 1;
+}
+
+/**
+ * ice_flow_acl_set_xtrct_seq - Program ACL extraction sequence
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ */
+static enum ice_status
+ice_flow_acl_set_xtrct_seq(struct ice_hw *hw, struct ice_flow_prof *prof)
+{
+	struct ice_aqc_acl_prof_generic_frmt buf;
+	struct ice_flow_fld_info *info;
+	enum ice_status status;
+	u8 prof_id = 0;
+	u16 i;
+
+	memset(&buf, 0, sizeof(buf));
+
+	status = ice_flow_get_hw_prof(hw, ICE_BLK_ACL, prof->id, &prof_id);
+	if (status)
+		return status;
+
+	status = ice_flow_acl_is_prof_in_use(hw, prof, &buf);
+	if (status && status != ICE_ERR_IN_USE)
+		return status;
+
+	if (!status) {
+		/* Program the profile dependent configuration. This is done
+		 * only once regardless of the number of PFs using that profile
+		 */
+		memset(&buf, 0, sizeof(buf));
+
+		for (i = 0; i < prof->segs_cnt; i++) {
+			struct ice_flow_seg_info *seg = &prof->segs[i];
+			u16 j;
+
+			for_each_set_bit(j, (unsigned long *)&seg->match,
+					 ICE_FLOW_FIELD_IDX_MAX) {
+				info = &seg->fields[j];
+
+				if (info->type == ICE_FLOW_FLD_TYPE_RANGE)
+					buf.word_selection[info->entry.val] =
+						info->xtrct.idx;
+				else
+					ice_flow_acl_set_xtrct_seq_fld(&buf,
+								       info);
+			}
+
+			for (j = 0; j < seg->raws_cnt; j++) {
+				info = &seg->raws[j].info;
+				ice_flow_acl_set_xtrct_seq_fld(&buf, info);
+			}
+		}
+
+		memset(&buf.pf_scenario_num[0], ICE_ACL_INVALID_SCEN,
+		       ICE_AQC_ACL_PROF_PF_SCEN_NUM_ELEMS);
+	}
+
+	/* Update the current PF */
+	buf.pf_scenario_num[hw->pf_id] = (u8)prof->cfg.scen->id;
+	return ice_prgm_acl_prof_xtrct(hw, prof_id, &buf, NULL);
 }
 
 /**
@@ -994,6 +1243,11 @@ ice_flow_assoc_prof(struct ice_hw *hw, enum ice_block blk,
 	enum ice_status status = 0;
 
 	if (!test_bit(vsi_handle, prof->vsis)) {
+		if (blk == ICE_BLK_ACL) {
+			status = ice_flow_acl_set_xtrct_seq(hw, prof);
+			if (status)
+				return status;
+		}
 		status = ice_add_prof_id_flow(hw, blk,
 					      ice_get_hw_vsi_num(hw,
 								 vsi_handle),
@@ -1113,6 +1367,341 @@ out:
 }
 
 /**
+ * ice_flow_acl_check_actions - Checks the ACL rule's actions
+ * @hw: pointer to the hardware structure
+ * @acts: array of actions to be performed on a match
+ * @acts_cnt: number of actions
+ * @cnt_alloc: indicates if an ACL counter has been allocated.
+ */
+static enum ice_status
+ice_flow_acl_check_actions(struct ice_hw *hw, struct ice_flow_action *acts,
+			   u8 acts_cnt, bool *cnt_alloc)
+{
+	DECLARE_BITMAP(dup_check, ICE_AQC_TBL_MAX_ACTION_PAIRS * 2);
+	int i;
+
+	bitmap_zero(dup_check, ICE_AQC_TBL_MAX_ACTION_PAIRS * 2);
+	*cnt_alloc = false;
+
+	if (acts_cnt > ICE_FLOW_ACL_MAX_NUM_ACT)
+		return ICE_ERR_OUT_OF_RANGE;
+
+	for (i = 0; i < acts_cnt; i++) {
+		if (acts[i].type != ICE_FLOW_ACT_NOP &&
+		    acts[i].type != ICE_FLOW_ACT_DROP &&
+		    acts[i].type != ICE_FLOW_ACT_CNTR_PKT &&
+		    acts[i].type != ICE_FLOW_ACT_FWD_QUEUE)
+			return ICE_ERR_CFG;
+
+		/* If the caller want to add two actions of the same type, then
+		 * it is considered invalid configuration.
+		 */
+		if (test_and_set_bit(acts[i].type, dup_check))
+			return ICE_ERR_PARAM;
+	}
+
+	/* Checks if ACL counters are needed. */
+	for (i = 0; i < acts_cnt; i++) {
+		if (acts[i].type == ICE_FLOW_ACT_CNTR_PKT ||
+		    acts[i].type == ICE_FLOW_ACT_CNTR_BYTES ||
+		    acts[i].type == ICE_FLOW_ACT_CNTR_PKT_BYTES) {
+			struct ice_acl_cntrs cntrs;
+			enum ice_status status;
+
+			cntrs.amount = 1;
+			cntrs.bank = 0; /* Only bank0 for the moment */
+
+			if (acts[i].type == ICE_FLOW_ACT_CNTR_PKT_BYTES)
+				cntrs.type = ICE_AQC_ACL_CNT_TYPE_DUAL;
+			else
+				cntrs.type = ICE_AQC_ACL_CNT_TYPE_SINGLE;
+
+			status = ice_aq_alloc_acl_cntrs(hw, &cntrs, NULL);
+			if (status)
+				return status;
+			/* Counter index within the bank */
+			acts[i].data.acl_act.value =
+						cpu_to_le16(cntrs.first_cntr);
+			*cnt_alloc = true;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * ice_flow_acl_frmt_entry_range - Format an ACL range checker for a given field
+ * @fld: number of the given field
+ * @info: info about field
+ * @range_buf: range checker configuration buffer
+ * @data: pointer to a data buffer containing flow entry's match values/masks
+ * @range: Input/output param indicating which range checkers are being used
+ */
+static void
+ice_flow_acl_frmt_entry_range(u16 fld, struct ice_flow_fld_info *info,
+			      struct ice_aqc_acl_profile_ranges *range_buf,
+			      u8 *data, u8 *range)
+{
+	u16 new_mask;
+
+	/* If not specified, default mask is all bits in field */
+	new_mask = (info->src.mask == ICE_FLOW_FLD_OFF_INVAL ?
+		    BIT(ice_flds_info[fld].size) - 1 :
+		    (*(u16 *)(data + info->src.mask))) << info->xtrct.disp;
+
+	/* If the mask is 0, then we don't need to worry about this input
+	 * range checker value.
+	 */
+	if (new_mask) {
+		u16 new_high =
+			(*(u16 *)(data + info->src.last)) << info->xtrct.disp;
+		u16 new_low =
+			(*(u16 *)(data + info->src.val)) << info->xtrct.disp;
+		u8 range_idx = info->entry.val;
+
+		range_buf->checker_cfg[range_idx].low_boundary =
+			cpu_to_be16(new_low);
+		range_buf->checker_cfg[range_idx].high_boundary =
+			cpu_to_be16(new_high);
+		range_buf->checker_cfg[range_idx].mask = cpu_to_be16(new_mask);
+
+		/* Indicate which range checker is being used */
+		*range |= BIT(range_idx);
+	}
+}
+
+/**
+ * ice_flow_acl_frmt_entry_fld - Partially format ACL entry for a given field
+ * @fld: number of the given field
+ * @info: info about the field
+ * @buf: buffer containing the entry
+ * @dontcare: buffer containing don't care mask for entry
+ * @data: pointer to a data buffer containing flow entry's match values/masks
+ */
+static void
+ice_flow_acl_frmt_entry_fld(u16 fld, struct ice_flow_fld_info *info, u8 *buf,
+			    u8 *dontcare, u8 *data)
+{
+	u16 dst, src, mask, k, end_disp, tmp_s = 0, tmp_m = 0;
+	bool use_mask = false;
+	u8 disp;
+
+	src = info->src.val;
+	mask = info->src.mask;
+	dst = info->entry.val - ICE_AQC_ACL_PROF_BYTE_SEL_START_IDX;
+	disp = info->xtrct.disp % BITS_PER_BYTE;
+
+	if (mask != ICE_FLOW_FLD_OFF_INVAL)
+		use_mask = true;
+
+	for (k = 0; k < info->entry.last; k++, dst++) {
+		/* Add overflow bits from previous byte */
+		buf[dst] = (tmp_s & 0xff00) >> 8;
+
+		/* If mask is not valid, tmp_m is always zero, so just setting
+		 * dontcare to 0 (no masked bits). If mask is valid, pulls in
+		 * overflow bits of mask from prev byte
+		 */
+		dontcare[dst] = (tmp_m & 0xff00) >> 8;
+
+		/* If there is displacement, last byte will only contain
+		 * displaced data, but there is no more data to read from user
+		 * buffer, so skip so as not to potentially read beyond end of
+		 * user buffer
+		 */
+		if (!disp || k < info->entry.last - 1) {
+			/* Store shifted data to use in next byte */
+			tmp_s = data[src++] << disp;
+
+			/* Add current (shifted) byte */
+			buf[dst] |= tmp_s & 0xff;
+
+			/* Handle mask if valid */
+			if (use_mask) {
+				tmp_m = (~data[mask++] & 0xff) << disp;
+				dontcare[dst] |= tmp_m & 0xff;
+			}
+		}
+	}
+
+	/* Fill in don't care bits at beginning of field */
+	if (disp) {
+		dst = info->entry.val - ICE_AQC_ACL_PROF_BYTE_SEL_START_IDX;
+		for (k = 0; k < disp; k++)
+			dontcare[dst] |= BIT(k);
+	}
+
+	end_disp = (disp + ice_flds_info[fld].size) % BITS_PER_BYTE;
+
+	/* Fill in don't care bits at end of field */
+	if (end_disp) {
+		dst = info->entry.val - ICE_AQC_ACL_PROF_BYTE_SEL_START_IDX +
+		      info->entry.last - 1;
+		for (k = end_disp; k < BITS_PER_BYTE; k++)
+			dontcare[dst] |= BIT(k);
+	}
+}
+
+/**
+ * ice_flow_acl_frmt_entry - Format ACL entry
+ * @hw: pointer to the hardware structure
+ * @prof: pointer to flow profile
+ * @e: pointer to the flow entry
+ * @data: pointer to a data buffer containing flow entry's match values/masks
+ * @acts: array of actions to be performed on a match
+ * @acts_cnt: number of actions
+ *
+ * Formats the key (and key_inverse) to be matched from the data passed in,
+ * along with data from the flow profile. This key/key_inverse pair makes up
+ * the 'entry' for an ACL flow entry.
+ */
+static enum ice_status
+ice_flow_acl_frmt_entry(struct ice_hw *hw, struct ice_flow_prof *prof,
+			struct ice_flow_entry *e, u8 *data,
+			struct ice_flow_action *acts, u8 acts_cnt)
+{
+	u8 *buf = NULL, *dontcare = NULL, *key = NULL, range = 0, dir_flag_msk;
+	struct ice_aqc_acl_profile_ranges *range_buf = NULL;
+	enum ice_status status;
+	bool cnt_alloc;
+	u8 prof_id = 0;
+	u16 i, buf_sz;
+
+	status = ice_flow_get_hw_prof(hw, ICE_BLK_ACL, prof->id, &prof_id);
+	if (status)
+		return status;
+
+	/* Format the result action */
+
+	status = ice_flow_acl_check_actions(hw, acts, acts_cnt, &cnt_alloc);
+	if (status)
+		return status;
+
+	status = ICE_ERR_NO_MEMORY;
+
+	e->acts = devm_kmemdup(ice_hw_to_dev(hw), acts,
+			       acts_cnt * sizeof(*acts), GFP_KERNEL);
+	if (!e->acts)
+		goto out;
+
+	e->acts_cnt = acts_cnt;
+
+	/* Format the matching data */
+	buf_sz = prof->cfg.scen->width;
+	buf = kzalloc(buf_sz, GFP_KERNEL);
+	if (!buf)
+		goto out;
+
+	dontcare = kzalloc(buf_sz, GFP_KERNEL);
+	if (!dontcare)
+		goto out;
+
+	/* 'key' buffer will store both key and key_inverse, so must be twice
+	 * size of buf
+	 */
+	key = devm_kzalloc(ice_hw_to_dev(hw), buf_sz * 2, GFP_KERNEL);
+	if (!key)
+		goto out;
+
+	range_buf = devm_kzalloc(ice_hw_to_dev(hw),
+				 sizeof(struct ice_aqc_acl_profile_ranges),
+				 GFP_KERNEL);
+	if (!range_buf)
+		goto out;
+
+	/* Set don't care mask to all 1's to start, will zero out used bytes */
+	memset(dontcare, 0xff, buf_sz);
+
+	for (i = 0; i < prof->segs_cnt; i++) {
+		struct ice_flow_seg_info *seg = &prof->segs[i];
+		u8 j;
+
+		for_each_set_bit(j, (unsigned long *)&seg->match,
+				 ICE_FLOW_FIELD_IDX_MAX) {
+			struct ice_flow_fld_info *info = &seg->fields[j];
+
+			if (info->type == ICE_FLOW_FLD_TYPE_RANGE)
+				ice_flow_acl_frmt_entry_range(j, info,
+							      range_buf, data,
+							      &range);
+			else
+				ice_flow_acl_frmt_entry_fld(j, info, buf,
+							    dontcare, data);
+		}
+
+		for (j = 0; j < seg->raws_cnt; j++) {
+			struct ice_flow_fld_info *info = &seg->raws[j].info;
+			u16 dst, src, mask, k;
+			bool use_mask = false;
+
+			src = info->src.val;
+			dst = info->entry.val -
+					ICE_AQC_ACL_PROF_BYTE_SEL_START_IDX;
+			mask = info->src.mask;
+
+			if (mask != ICE_FLOW_FLD_OFF_INVAL)
+				use_mask = true;
+
+			for (k = 0; k < info->entry.last; k++, dst++) {
+				buf[dst] = data[src++];
+				if (use_mask)
+					dontcare[dst] = ~data[mask++];
+				else
+					dontcare[dst] = 0;
+			}
+		}
+	}
+
+	buf[prof->cfg.scen->pid_idx] = (u8)prof_id;
+	dontcare[prof->cfg.scen->pid_idx] = 0;
+
+	/* Format the buffer for direction flags */
+	dir_flag_msk = BIT(ICE_FLG_PKT_DIR);
+
+	if (prof->dir == ICE_FLOW_RX)
+		buf[prof->cfg.scen->pkt_dir_idx] = dir_flag_msk;
+
+	if (range) {
+		buf[prof->cfg.scen->rng_chk_idx] = range;
+		/* Mark any unused range checkers as don't care */
+		dontcare[prof->cfg.scen->rng_chk_idx] = ~range;
+		e->range_buf = range_buf;
+	} else {
+		devm_kfree(ice_hw_to_dev(hw), range_buf);
+	}
+
+	status = ice_set_key(key, buf_sz * 2, buf, NULL, dontcare, NULL, 0,
+			     buf_sz);
+	if (status)
+		goto out;
+
+	e->entry = key;
+	e->entry_sz = buf_sz * 2;
+
+out:
+	kfree(buf);
+	kfree(dontcare);
+
+	if (status && key)
+		devm_kfree(ice_hw_to_dev(hw), key);
+
+	if (status && range_buf) {
+		devm_kfree(ice_hw_to_dev(hw), range_buf);
+		e->range_buf = NULL;
+	}
+
+	if (status && e->acts) {
+		devm_kfree(ice_hw_to_dev(hw), e->acts);
+		e->acts = NULL;
+		e->acts_cnt = 0;
+	}
+
+	if (status && cnt_alloc)
+		ice_flow_acl_free_act_cntr(hw, acts, acts_cnt);
+
+	return status;
+}
+/**
  * ice_flow_add_entry - Add a flow entry
  * @hw: pointer to the HW struct
  * @blk: classification stage
@@ -1121,16 +1710,23 @@ out:
  * @vsi_handle: software VSI handle for the flow entry
  * @prio: priority of the flow entry
  * @data: pointer to a data buffer containing flow entry's match values/masks
+ * @acts: arrays of actions to be performed on a match
+ * @acts_cnt: number of actions
  * @entry_h: pointer to buffer that receives the new flow entry's handle
  */
 enum ice_status
 ice_flow_add_entry(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
 		   u64 entry_id, u16 vsi_handle, enum ice_flow_priority prio,
-		   void *data, u64 *entry_h)
+		   void *data, struct ice_flow_action *acts, u8 acts_cnt,
+		   u64 *entry_h)
 {
 	struct ice_flow_entry *e = NULL;
 	struct ice_flow_prof *prof;
 	enum ice_status status;
+
+	/* ACL entries must indicate an action */
+	if (blk == ICE_BLK_ACL && (!acts || !acts_cnt))
+		return ICE_ERR_PARAM;
 
 	/* No flow entry data is expected for RSS */
 	if (!entry_h || (!data && blk != ICE_BLK_RSS))
@@ -1168,14 +1764,24 @@ ice_flow_add_entry(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
 	case ICE_BLK_FD:
 	case ICE_BLK_RSS:
 		break;
+	case ICE_BLK_ACL:
+		/* ACL will handle the entry management */
+		status = ice_flow_acl_frmt_entry(hw, prof, e, (u8 *)data, acts,
+						 acts_cnt);
+		if (status)
+			goto out;
+		break;
 	default:
 		status = ICE_ERR_NOT_IMPL;
 		goto out;
 	}
 
-	mutex_lock(&prof->entries_lock);
-	list_add(&e->l_entry, &prof->entries);
-	mutex_unlock(&prof->entries_lock);
+	if (blk != ICE_BLK_ACL) {
+		/* ACL will handle the entry management */
+		mutex_lock(&prof->entries_lock);
+		list_add(&e->l_entry, &prof->entries);
+		mutex_unlock(&prof->entries_lock);
+	}
 
 	*entry_h = ICE_FLOW_ENTRY_HNDL(e);
 
