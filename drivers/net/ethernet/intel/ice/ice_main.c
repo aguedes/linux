@@ -3832,7 +3832,9 @@ static int ice_init_acl(struct ice_pf *pf)
 {
 	struct ice_acl_tbl_params params;
 	struct ice_hw *hw = &pf->hw;
+	enum ice_status status;
 	int divider;
+	u16 scen_id;
 
 	/* Creates a single ACL table that consist of src_ip(4 byte),
 	 * dest_ip(4 byte), src_port(2 byte) and dst_port(2 byte) for a total
@@ -3852,7 +3854,12 @@ static int ice_init_acl(struct ice_pf *pf)
 	params.entry_act_pairs = 1;
 	params.concurr = false;
 
-	return ice_status_to_errno(ice_acl_create_tbl(hw, &params));
+	status = ice_acl_create_tbl(hw, &params);
+	if (status)
+		return ice_status_to_errno(status);
+
+	return ice_status_to_errno(ice_acl_create_scen(hw, params.width,
+						       params.depth, &scen_id));
 }
 
 /**
