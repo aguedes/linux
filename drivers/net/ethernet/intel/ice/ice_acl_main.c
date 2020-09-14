@@ -6,6 +6,9 @@
 #include "ice.h"
 #include "ice_lib.h"
 
+/* Default ACL Action priority */
+#define ICE_ACL_ACT_PRIO	3
+
 /* Number of action */
 #define ICE_ACL_NUM_ACT		1
 
@@ -246,15 +249,76 @@ err_exit:
  */
 int ice_acl_add_rule_ethtool(struct ice_vsi *vsi, struct ethtool_rxnfc *cmd)
 {
+	struct ice_flow_action acts[ICE_ACL_NUM_ACT];
 	struct ethtool_rx_flow_spec *fsp;
+	struct ice_fd_hw_prof *hw_prof;
+	struct ice_fdir_fltr *input;
+	enum ice_fltr_ptype flow;
+	enum ice_status status;
+	struct device *dev;
 	struct ice_pf *pf;
+	struct ice_hw *hw;
+	u64 entry_h = 0;
+	int act_cnt;
+	int ret;
 
 	if (!vsi || !cmd)
 		return -EINVAL;
 
 	pf = vsi->back;
+	hw = &pf->hw;
+	dev = ice_pf_to_dev(pf);
 
 	fsp = (struct ethtool_rx_flow_spec *)&cmd->fs;
 
-	return ice_acl_check_input_set(pf, fsp);
+	ret = ice_acl_check_input_set(pf, fsp);
+	if (ret)
+		return ret;
+
+	/* Add new rule */
+	input = devm_kzalloc(dev, sizeof(*input), GFP_KERNEL);
+	if (!input)
+		return -ENOMEM;
+
+	ret = ice_ntuple_set_input_set(vsi, ICE_BLK_ACL, fsp, input);
+	if (ret)
+		goto free_input;
+
+	memset(&acts, 0, sizeof(acts));
+	act_cnt = 1;
+	if (fsp->ring_cookie == RX_CLS_FLOW_DISC) {
+		acts[0].type = ICE_FLOW_ACT_DROP;
+		acts[0].data.acl_act.mdid = ICE_MDID_RX_PKT_DROP;
+		acts[0].data.acl_act.prio = ICE_ACL_ACT_PRIO;
+		acts[0].data.acl_act.value = cpu_to_le16(0x1);
+	} else {
+		acts[0].type = ICE_FLOW_ACT_FWD_QUEUE;
+		acts[0].data.acl_act.mdid = ICE_MDID_RX_DST_Q;
+		acts[0].data.acl_act.prio = ICE_ACL_ACT_PRIO;
+		acts[0].data.acl_act.value = cpu_to_le16(input->q_index);
+	}
+
+	flow = ice_ethtool_flow_to_fltr(fsp->flow_type & ~FLOW_EXT);
+	hw_prof = hw->acl_prof[flow];
+
+	status = ice_flow_add_entry(hw, ICE_BLK_ACL, flow, fsp->location,
+				    vsi->idx, ICE_FLOW_PRIO_NORMAL, input, acts,
+				    act_cnt, &entry_h);
+	if (status) {
+		dev_err(dev, "Could not add flow entry %d\n", flow);
+		ret = ice_status_to_errno(status);
+		goto free_input;
+	}
+
+	if (!hw_prof->cnt || vsi->idx != hw_prof->vsi_h[hw_prof->cnt - 1]) {
+		hw_prof->vsi_h[hw_prof->cnt] = vsi->idx;
+		hw_prof->entry_h[hw_prof->cnt++][0] = entry_h;
+	}
+
+	return 0;
+
+free_input:
+	devm_kfree(dev, input);
+
+	return ret;
 }

@@ -189,11 +189,17 @@ struct ice_flow_entry {
 
 	u64 id;
 	struct ice_flow_prof *prof;
+	/* Action list */
+	struct ice_flow_action *acts;
 	/* Flow entry's content */
 	void *entry;
+	/* Range buffer (For ACL only) */
+	struct ice_aqc_acl_profile_ranges *range_buf;
 	enum ice_flow_priority priority;
 	u16 vsi_handle;
 	u16 entry_sz;
+#define ICE_FLOW_ACL_MAX_NUM_ACT	2
+	u8 acts_cnt;
 };
 
 #define ICE_FLOW_ENTRY_HNDL(e)	((u64)(uintptr_t)e)
@@ -257,7 +263,8 @@ ice_flow_rem_prof(struct ice_hw *hw, enum ice_block blk, u64 prof_id);
 enum ice_status
 ice_flow_add_entry(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
 		   u64 entry_id, u16 vsi, enum ice_flow_priority prio,
-		   void *data, u64 *entry_h);
+		   void *data, struct ice_flow_action *acts, u8 acts_cnt,
+		   u64 *entry_h);
 enum ice_status
 ice_flow_rem_entry(struct ice_hw *hw, enum ice_block blk, u64 entry_h);
 void

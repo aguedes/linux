@@ -153,6 +153,177 @@ ice_aq_program_actpair(struct ice_hw *hw, u8 act_mem_idx, u16 act_entry_idx,
 }
 
 /**
+ * ice_acl_prof_aq_send - sending ACL profile AQ commands
+ * @hw: pointer to the HW struct
+ * @opc: command opcode
+ * @prof_id: profile ID
+ * @buf: ptr to buffer
+ * @cd: pointer to command details structure or NULL
+ *
+ * This function sends ACL profile commands
+ */
+static enum ice_status
+ice_acl_prof_aq_send(struct ice_hw *hw, u16 opc, u8 prof_id,
+		     struct ice_aqc_acl_prof_generic_frmt *buf,
+		     struct ice_sq_cd *cd)
+{
+	struct ice_aq_desc desc;
+
+	ice_fill_dflt_direct_cmd_desc(&desc, opc);
+	desc.params.profile.profile_id = prof_id;
+	if (opc == ice_aqc_opc_program_acl_prof_extraction)
+		desc.flags |= cpu_to_le16(ICE_AQ_FLAG_RD);
+	return ice_aq_send_cmd(hw, &desc, buf, sizeof(*buf), cd);
+}
+
+/**
+ * ice_prgm_acl_prof_xtrct - program ACL profile extraction sequence
+ * @hw: pointer to the HW struct
+ * @prof_id: profile ID
+ * @buf: ptr to buffer
+ * @cd: pointer to command details structure or NULL
+ *
+ * Program ACL profile extraction (indirect 0x0C1D)
+ */
+enum ice_status
+ice_prgm_acl_prof_xtrct(struct ice_hw *hw, u8 prof_id,
+			struct ice_aqc_acl_prof_generic_frmt *buf,
+			struct ice_sq_cd *cd)
+{
+	return ice_acl_prof_aq_send(hw, ice_aqc_opc_program_acl_prof_extraction,
+				    prof_id, buf, cd);
+}
+
+/**
+ * ice_query_acl_prof - query ACL profile
+ * @hw: pointer to the HW struct
+ * @prof_id: profile ID
+ * @buf: ptr to buffer (which will contain response of this command)
+ * @cd: pointer to command details structure or NULL
+ *
+ * Query ACL profile (indirect 0x0C21)
+ */
+enum ice_status
+ice_query_acl_prof(struct ice_hw *hw, u8 prof_id,
+		   struct ice_aqc_acl_prof_generic_frmt *buf,
+		   struct ice_sq_cd *cd)
+{
+	return ice_acl_prof_aq_send(hw, ice_aqc_opc_query_acl_prof, prof_id,
+				    buf, cd);
+}
+
+/**
+ * ice_aq_acl_cntrs_chk_params - Checks ACL counter parameters
+ * @cntrs: ptr to buffer describing input and output params
+ *
+ * This function checks the counter bank range for counter type and returns
+ * success or failure.
+ */
+static enum ice_status ice_aq_acl_cntrs_chk_params(struct ice_acl_cntrs *cntrs)
+{
+	enum ice_status status = 0;
+
+	if (!cntrs || !cntrs->amount)
+		return ICE_ERR_PARAM;
+
+	switch (cntrs->type) {
+	case ICE_AQC_ACL_CNT_TYPE_SINGLE:
+		/* Single counter type - configured to count either bytes
+		 * or packets, the valid values for byte or packet counters
+		 * shall be 0-3.
+		 */
+		if (cntrs->bank > ICE_AQC_ACL_MAX_CNT_SINGLE)
+			status = ICE_ERR_OUT_OF_RANGE;
+		break;
+	case ICE_AQC_ACL_CNT_TYPE_DUAL:
+		/* Pair counter type - counts number of bytes and packets
+		 * The valid values for byte/packet counter duals shall be 0-1
+		 */
+		if (cntrs->bank > ICE_AQC_ACL_MAX_CNT_DUAL)
+			status = ICE_ERR_OUT_OF_RANGE;
+		break;
+	default:
+		/* Unspecified counter type - Invalid or error */
+		status = ICE_ERR_PARAM;
+	}
+
+	return status;
+}
+
+/**
+ * ice_aq_alloc_acl_cntrs - allocate ACL counters
+ * @hw: pointer to the HW struct
+ * @cntrs: ptr to buffer describing input and output params
+ * @cd: pointer to command details structure or NULL
+ *
+ * Allocate ACL counters (indirect 0x0C16). This function attempts to
+ * allocate a contiguous block of counters. In case of failures, caller can
+ * attempt to allocate a smaller chunk. The allocation is considered
+ * unsuccessful if returned counter value is invalid. In this case it returns
+ * an error otherwise success.
+ */
+enum ice_status
+ice_aq_alloc_acl_cntrs(struct ice_hw *hw, struct ice_acl_cntrs *cntrs,
+		       struct ice_sq_cd *cd)
+{
+	struct ice_aqc_acl_alloc_counters *cmd;
+	u16 first_cntr, last_cntr;
+	struct ice_aq_desc desc;
+	enum ice_status status;
+
+	/* check for invalid params */
+	status = ice_aq_acl_cntrs_chk_params(cntrs);
+	if (status)
+		return status;
+	ice_fill_dflt_direct_cmd_desc(&desc, ice_aqc_opc_alloc_acl_counters);
+	cmd = &desc.params.alloc_counters;
+	cmd->counter_amount = cntrs->amount;
+	cmd->counters_type = cntrs->type;
+	cmd->bank_alloc = cntrs->bank;
+	status = ice_aq_send_cmd(hw, &desc, NULL, 0, cd);
+	if (!status) {
+		first_cntr = le16_to_cpu(cmd->ops.resp.first_counter);
+		last_cntr = le16_to_cpu(cmd->ops.resp.last_counter);
+		if (first_cntr == ICE_AQC_ACL_ALLOC_CNT_INVAL ||
+		    last_cntr == ICE_AQC_ACL_ALLOC_CNT_INVAL)
+			return ICE_ERR_OUT_OF_RANGE;
+		cntrs->first_cntr = first_cntr;
+		cntrs->last_cntr = last_cntr;
+	}
+	return status;
+}
+
+/**
+ * ice_aq_dealloc_acl_cntrs - deallocate ACL counters
+ * @hw: pointer to the HW struct
+ * @cntrs: ptr to buffer describing input and output params
+ * @cd: pointer to command details structure or NULL
+ *
+ * De-allocate ACL counters (direct 0x0C17)
+ */
+enum ice_status
+ice_aq_dealloc_acl_cntrs(struct ice_hw *hw, struct ice_acl_cntrs *cntrs,
+			 struct ice_sq_cd *cd)
+{
+	struct ice_aqc_acl_dealloc_counters *cmd;
+	struct ice_aq_desc desc;
+	enum ice_status status;
+
+	/* check for invalid params */
+	status = ice_aq_acl_cntrs_chk_params(cntrs);
+	if (status)
+		return status;
+
+	ice_fill_dflt_direct_cmd_desc(&desc, ice_aqc_opc_dealloc_acl_counters);
+	cmd = &desc.params.dealloc_counters;
+	cmd->first_counter = cpu_to_le16(cntrs->first_cntr);
+	cmd->last_counter = cpu_to_le16(cntrs->last_cntr);
+	cmd->counters_type = cntrs->type;
+	cmd->bank_alloc = cntrs->bank;
+	return ice_aq_send_cmd(hw, &desc, NULL, 0, cd);
+}
+
+/**
  * ice_aq_alloc_acl_scen - allocate ACL scenario
  * @hw: pointer to the HW struct
  * @scen_id: memory location to receive allocated scenario ID

@@ -103,6 +103,21 @@ struct ice_acl_alloc_tbl {
 	} buf;
 };
 
+/* This structure is used to communicate input and output params for
+ * [de]allocate_acl_counters
+ */
+struct ice_acl_cntrs {
+	u8 amount;
+	u8 type;
+	u8 bank;
+
+	/* Next 2 variables are used for output in case of alloc_acl_counters
+	 * and input in case of deallocate_acl_counters
+	 */
+	u16 first_cntr;
+	u16 last_cntr;
+};
+
 enum ice_status
 ice_acl_create_tbl(struct ice_hw *hw, struct ice_acl_tbl_params *params);
 enum ice_status ice_acl_destroy_tbl(struct ice_hw *hw);
@@ -121,6 +136,20 @@ ice_aq_program_acl_entry(struct ice_hw *hw, u8 tcam_idx, u16 entry_idx,
 enum ice_status
 ice_aq_program_actpair(struct ice_hw *hw, u8 act_mem_idx, u16 act_entry_idx,
 		       struct ice_aqc_actpair *buf, struct ice_sq_cd *cd);
+enum ice_status
+ice_prgm_acl_prof_xtrct(struct ice_hw *hw, u8 prof_id,
+			struct ice_aqc_acl_prof_generic_frmt *buf,
+			struct ice_sq_cd *cd);
+enum ice_status
+ice_query_acl_prof(struct ice_hw *hw, u8 prof_id,
+		   struct ice_aqc_acl_prof_generic_frmt *buf,
+		   struct ice_sq_cd *cd);
+enum ice_status
+ice_aq_alloc_acl_cntrs(struct ice_hw *hw, struct ice_acl_cntrs *cntrs,
+		       struct ice_sq_cd *cd);
+enum ice_status
+ice_aq_dealloc_acl_cntrs(struct ice_hw *hw, struct ice_acl_cntrs *cntrs,
+			 struct ice_sq_cd *cd);
 enum ice_status
 ice_aq_alloc_acl_scen(struct ice_hw *hw, u16 *scen_id,
 		      struct ice_aqc_acl_scen *buf, struct ice_sq_cd *cd);
