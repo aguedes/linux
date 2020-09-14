@@ -49,6 +49,7 @@
 #include "ice_dcb.h"
 #include "ice_switch.h"
 #include "ice_common.h"
+#include "ice_flow.h"
 #include "ice_sched.h"
 #include "ice_virtchnl_pf.h"
 #include "ice_sriov.h"
@@ -99,6 +100,9 @@
 #define ICE_RX_DESC(R, i) (&(((union ice_32b_rx_flex_desc *)((R)->desc))[i]))
 #define ICE_TX_CTX_DESC(R, i) (&(((struct ice_tx_ctx_desc *)((R)->desc))[i]))
 #define ICE_TX_FDIRDESC(R, i) (&(((struct ice_fltr_desc *)((R)->desc))[i]))
+
+#define ICE_ACL_ENTIRE_SLICE	1
+#define ICE_ACL_HALF_SLICE	2
 
 /* Macro for each VSI in a PF */
 #define ice_for_each_vsi(pf, i) \
