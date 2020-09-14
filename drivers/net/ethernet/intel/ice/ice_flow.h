@@ -198,6 +198,8 @@ struct ice_flow_entry {
 	enum ice_flow_priority priority;
 	u16 vsi_handle;
 	u16 entry_sz;
+	/* Entry index in the ACL's scenario */
+	u16 scen_entry_idx;
 #define ICE_FLOW_ACL_MAX_NUM_ACT	2
 	u8 acts_cnt;
 };
@@ -260,6 +262,7 @@ ice_flow_add_prof(struct ice_hw *hw, enum ice_block blk, enum ice_flow_dir dir,
 		  struct ice_flow_prof **prof);
 enum ice_status
 ice_flow_rem_prof(struct ice_hw *hw, enum ice_block blk, u64 prof_id);
+u64 ice_flow_find_entry(struct ice_hw *hw, enum ice_block blk, u64 entry_id);
 enum ice_status
 ice_flow_add_entry(struct ice_hw *hw, enum ice_block blk, u64 prof_id,
 		   u64 entry_id, u16 vsi, enum ice_flow_priority prio,

@@ -855,7 +855,7 @@ static void ice_set_fd_vsi_ctx(struct ice_vsi_ctx *ctxt, struct ice_vsi *vsi)
 	if (vsi->type != ICE_VSI_PF && vsi->type != ICE_VSI_CTRL)
 		return;
 
-	val = ICE_AQ_VSI_PROP_FLOW_DIR_VALID;
+	val = ICE_AQ_VSI_PROP_FLOW_DIR_VALID | ICE_AQ_VSI_PROP_ACL_VALID;
 	ctxt->info.valid_sections |= cpu_to_le16(val);
 	dflt_q = 0;
 	dflt_q_group = 0;
@@ -885,6 +885,14 @@ static void ice_set_fd_vsi_ctx(struct ice_vsi_ctx *ctxt, struct ice_vsi *vsi)
 	val |= ((dflt_q_prio << ICE_AQ_VSI_FD_DEF_PRIORITY_S) &
 		ICE_AQ_VSI_FD_DEF_PRIORITY_M);
 	ctxt->info.fd_report_opt = cpu_to_le16(val);
+
+#define ICE_ACL_RX_PROF_MISS_CNTR ((2 << ICE_AQ_VSI_ACL_DEF_RX_PROF_S) & \
+				   ICE_AQ_VSI_ACL_DEF_RX_PROF_M)
+#define ICE_ACL_RX_TBL_MISS_CNTR ((3 << ICE_AQ_VSI_ACL_DEF_RX_TABLE_S) & \
+				  ICE_AQ_VSI_ACL_DEF_RX_TABLE_M)
+
+	val = ICE_ACL_RX_PROF_MISS_CNTR | ICE_ACL_RX_TBL_MISS_CNTR;
+	ctxt->info.acl_def_act = cpu_to_le16(val);
 }
 
 /**
