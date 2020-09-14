@@ -3823,6 +3823,48 @@ static enum ice_status ice_send_version(struct ice_pf *pf)
 }
 
 /**
+ * ice_init_acl - Initializes the ACL block
+ * @pf: ptr to PF device
+ *
+ * returns 0 on success, negative on error
+ */
+static int ice_init_acl(struct ice_pf *pf)
+{
+	struct ice_acl_tbl_params params;
+	struct ice_hw *hw = &pf->hw;
+	int divider;
+
+	/* Creates a single ACL table that consist of src_ip(4 byte),
+	 * dest_ip(4 byte), src_port(2 byte) and dst_port(2 byte) for a total
+	 * of 12 bytes (96 bits), hence 120 bit wide keys, i.e. 3 TCAM slices.
+	 * If the given hardware card contains less than 8 PFs (ports) then
+	 * each PF will have its own TCAM slices. For 8 PFs, a given slice will
+	 * be shared by 2 different PFs.
+	 */
+	if (hw->dev_caps.num_funcs < 8)
+		divider = ICE_ACL_ENTIRE_SLICE;
+	else
+		divider = ICE_ACL_HALF_SLICE;
+
+	memset(&params, 0, sizeof(params));
+	params.width = ICE_AQC_ACL_KEY_WIDTH_BYTES * 3;
+	params.depth = ICE_AQC_ACL_TCAM_DEPTH / divider;
+	params.entry_act_pairs = 1;
+	params.concurr = false;
+
+	return ice_status_to_errno(ice_acl_create_tbl(hw, &params));
+}
+
+/**
+ * ice_deinit_acl - Unroll the initialization of the ACL block
+ * @pf: ptr to PF device
+ */
+static void ice_deinit_acl(struct ice_pf *pf)
+{
+	ice_acl_destroy_tbl(&pf->hw);
+}
+
+/**
  * ice_init_fdir - Initialize flow director VSI and configuration
  * @pf: pointer to the PF instance
  *
@@ -4231,6 +4273,12 @@ ice_probe(struct pci_dev *pdev, const struct pci_device_id __always_unused *ent)
 	/* Note: Flow director init failure is non-fatal to load */
 	if (ice_init_fdir(pf))
 		dev_err(dev, "could not initialize flow director\n");
+	if (test_bit(ICE_FLAG_FD_ENA, pf->flags)) {
+		/* Note: ACL init failure is non-fatal to load */
+		err = ice_init_acl(pf);
+		if (err)
+			dev_err(dev, "Failed to initialize ACL: %d\n", err);
+	}
 
 	/* Note: DCB init failure is non-fatal to load */
 	if (ice_init_pf_dcb(pf, false)) {
@@ -4361,6 +4409,8 @@ static void ice_remove(struct pci_dev *pdev)
 
 	ice_aq_cancel_waiting_tasks(pf);
 
+	if (test_bit(ICE_FLAG_FD_ENA, pf->flags))
+		ice_deinit_acl(pf);
 	mutex_destroy(&(&pf->hw)->fdir_fltr_lock);
 	if (!ice_is_safe_mode(pf))
 		ice_remove_arfs(pf);
