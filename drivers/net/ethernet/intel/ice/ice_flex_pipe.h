@@ -40,6 +40,13 @@ void ice_free_seg(struct ice_hw *hw);
 void ice_fill_blk_tbls(struct ice_hw *hw);
 void ice_clear_hw_tbls(struct ice_hw *hw);
 void ice_free_hw_tbls(struct ice_hw *hw);
+struct ice_prof_map *
+ice_search_prof_id(struct ice_hw *hw, enum ice_block blk, u64 id);
 enum ice_status
 ice_rem_prof(struct ice_hw *hw, enum ice_block blk, u64 id);
+
+enum ice_status
+ice_set_key(u8 *key, u16 size, u8 *val, u8 *upd, u8 *dc, u8 *nm, u16 off,
+	    u16 len);
+
 #endif /* _ICE_FLEX_PIPE_H_ */
