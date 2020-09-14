@@ -2409,6 +2409,9 @@ ice_find_prof_id(struct ice_hw *hw, enum ice_block blk,
 static bool ice_prof_id_rsrc_type(enum ice_block blk, u16 *rsrc_type)
 {
 	switch (blk) {
+	case ICE_BLK_ACL:
+		*rsrc_type = ICE_AQC_RES_TYPE_ACL_PROF_BLDR_PROFID;
+		break;
 	case ICE_BLK_FD:
 		*rsrc_type = ICE_AQC_RES_TYPE_FD_PROF_BLDR_PROFID;
 		break;
@@ -2429,6 +2432,9 @@ static bool ice_prof_id_rsrc_type(enum ice_block blk, u16 *rsrc_type)
 static bool ice_tcam_ent_rsrc_type(enum ice_block blk, u16 *rsrc_type)
 {
 	switch (blk) {
+	case ICE_BLK_ACL:
+		*rsrc_type = ICE_AQC_RES_TYPE_ACL_PROF_BLDR_TCAM;
+		break;
 	case ICE_BLK_FD:
 		*rsrc_type = ICE_AQC_RES_TYPE_FD_PROF_BLDR_TCAM;
 		break;
@@ -3800,7 +3806,6 @@ ice_add_prof(struct ice_hw *hw, enum ice_block blk, u64 id, u8 ptypes[],
 				 BITS_PER_BYTE) {
 			u16 ptype;
 			u8 ptg;
-			u8 m;
 
 			ptype = byte * BITS_PER_BYTE + bit;
 
@@ -3818,11 +3823,6 @@ ice_add_prof(struct ice_hw *hw, enum ice_block blk, u64 id, u8 ptypes[],
 			prof->ptg[prof->ptg_cnt] = ptg;
 
 			if (++prof->ptg_cnt >= ICE_MAX_PTG_PER_PROFILE)
-				break;
-
-			/* nothing left in byte, then exit */
-			m = ~(u8)((1 << (bit + 1)) - 1);
-			if (!(ptypes[byte] & m))
 				break;
 		}
 
