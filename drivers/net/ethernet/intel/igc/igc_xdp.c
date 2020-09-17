@@ -59,8 +59,7 @@ static int igc_xdp_init_tx_buffer(struct igc_tx_buffer *buffer,
 }
 
 /* This function requires __netif_tx_lock is held by the caller. */
-static int igc_xdp_init_tx_descriptor(struct igc_ring *ring,
-				      struct xdp_frame *xdpf)
+int igc_xdp_init_tx_descriptor(struct igc_ring *ring, struct xdp_frame *xdpf)
 {
 	struct igc_tx_buffer *buffer;
 	union igc_adv_tx_desc *desc;

@@ -22,4 +22,6 @@ void igc_xdp_unregister_rxq_info(struct igc_ring *ring);
 
 struct igc_ring *igc_xdp_get_tx_ring(struct igc_adapter *adapter, int cpu);
 
+int igc_xdp_init_tx_descriptor(struct igc_ring *ring, struct xdp_frame *xdpf);
+
 #endif /* _IGC_XDP_H_ */
