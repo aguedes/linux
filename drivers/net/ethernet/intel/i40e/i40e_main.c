@@ -12538,11 +12538,14 @@ static int i40e_xdp_setup(struct i40e_vsi *vsi,
 	/* Kick start the NAPI context if there is an AF_XDP socket open
 	 * on that queue id. This so that receiving will start.
 	 */
-	if (need_reset && prog)
+	if (need_reset && prog) {
+		dev_info(&pf->pdev->dev,
+			 "Loading XDP program, please note: XDP_REDIRECT action requires the same number of queues on both interfaces\n");
 		for (i = 0; i < vsi->num_queue_pairs; i++)
 			if (vsi->xdp_rings[i]->xsk_pool)
 				(void)i40e_xsk_wakeup(vsi->netdev, i,
 						      XDP_WAKEUP_RX);
+	}
 
 	return 0;
 }
