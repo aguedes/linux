@@ -39,7 +39,42 @@ struct iecm_rx_ptype_decoded iecm_rx_ptype_lkup[IECM_RX_SUPP_PTYPE] = {
  */
 static void iecm_recv_event_msg(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	enum virtchnl_link_speed link_speed;
+	struct virtchnl_pf_event *vpe;
+
+	vpe = (struct virtchnl_pf_event *)vport->adapter->vc_msg;
+
+	switch (vpe->event) {
+	case VIRTCHNL_EVENT_LINK_CHANGE:
+		link_speed = vpe->event_data.link_event.link_speed;
+		adapter->link_speed = link_speed;
+		if (adapter->link_up !=
+		    vpe->event_data.link_event.link_status) {
+			adapter->link_up =
+				vpe->event_data.link_event.link_status;
+			if (adapter->link_up) {
+				netif_tx_start_all_queues(vport->netdev);
+				netif_carrier_on(vport->netdev);
+			} else {
+				netif_tx_stop_all_queues(vport->netdev);
+				netif_carrier_off(vport->netdev);
+			}
+		}
+		break;
+	case VIRTCHNL_EVENT_RESET_IMPENDING:
+			mutex_lock(&adapter->reset_lock);
+			set_bit(__IECM_HR_CORE_RESET, adapter->flags);
+			queue_delayed_work(adapter->vc_event_wq,
+					   &adapter->vc_event_task,
+					   msecs_to_jiffies(10));
+		break;
+	default:
+		dev_err(&vport->adapter->pdev->dev,
+			"Unknown event %d from PF\n", vpe->event);
+		break;
+	}
+	mutex_unlock(&vport->adapter->vc_msg_lock);
 }
 
 /**
@@ -52,7 +87,29 @@ static void iecm_recv_event_msg(struct iecm_vport *vport)
  */
 static int iecm_mb_clean(struct iecm_adapter *adapter)
 {
-	/* stub */
+	u16 i, num_q_msg = IECM_DFLT_MBX_Q_LEN;
+	struct iecm_ctlq_msg **q_msg;
+	struct iecm_dma_mem *dma_mem;
+	int err = 0;
+
+	q_msg = kcalloc(num_q_msg, sizeof(struct iecm_ctlq_msg *), GFP_KERNEL);
+	if (!q_msg)
+		return -ENOMEM;
+
+	err = iecm_ctlq_clean_sq(adapter->hw.asq, &num_q_msg, q_msg);
+	if (err)
+		goto error;
+
+	for (i = 0; i < num_q_msg; i++) {
+		dma_mem = q_msg[i]->ctx.indirect.payload;
+		if (dma_mem)
+			dmam_free_coherent(&adapter->pdev->dev, dma_mem->size,
+					   dma_mem->va, dma_mem->pa);
+		kfree(q_msg[i]);
+	}
+error:
+	kfree(q_msg);
+	return err;
 }
 
 /**
@@ -69,7 +126,53 @@ static int iecm_mb_clean(struct iecm_adapter *adapter)
 int iecm_send_mb_msg(struct iecm_adapter *adapter, enum virtchnl_ops op,
 		     u16 msg_size, u8 *msg)
 {
-	/* stub */
+	struct iecm_ctlq_msg *ctlq_msg;
+	struct iecm_dma_mem *dma_mem;
+	int err = 0;
+
+	err = iecm_mb_clean(adapter);
+	if (err)
+		return err;
+
+	ctlq_msg = kzalloc(sizeof(*ctlq_msg), GFP_KERNEL);
+	if (!ctlq_msg)
+		return -ENOMEM;
+
+	dma_mem = kzalloc(sizeof(*dma_mem), GFP_KERNEL);
+	if (!dma_mem) {
+		err = -ENOMEM;
+		goto dma_mem_error;
+	}
+
+	memset(ctlq_msg, 0, sizeof(struct iecm_ctlq_msg));
+	ctlq_msg->opcode = iecm_mbq_opc_send_msg_to_cp;
+	ctlq_msg->func_id = 0;
+	ctlq_msg->data_len = msg_size;
+	ctlq_msg->cookie.mbx.chnl_opcode = op;
+	ctlq_msg->cookie.mbx.chnl_retval = VIRTCHNL_STATUS_SUCCESS;
+	dma_mem->size = IECM_DFLT_MBX_BUF_SIZE;
+	dma_mem->va = dmam_alloc_coherent(&adapter->pdev->dev, dma_mem->size,
+					  &dma_mem->pa, GFP_KERNEL);
+	if (!dma_mem->va) {
+		err = -ENOMEM;
+		goto dma_alloc_error;
+	}
+	memcpy(dma_mem->va, msg, msg_size);
+	ctlq_msg->ctx.indirect.payload = dma_mem;
+
+	err = iecm_ctlq_send(&adapter->hw, adapter->hw.asq, 1, ctlq_msg);
+	if (err)
+		goto send_error;
+
+	return 0;
+send_error:
+	dmam_free_coherent(&adapter->pdev->dev, dma_mem->size, dma_mem->va,
+			   dma_mem->pa);
+dma_alloc_error:
+	kfree(dma_mem);
+dma_mem_error:
+	kfree(ctlq_msg);
+	return err;
 }
 EXPORT_SYMBOL(iecm_send_mb_msg);
 
@@ -86,7 +189,264 @@ EXPORT_SYMBOL(iecm_send_mb_msg);
 int iecm_recv_mb_msg(struct iecm_adapter *adapter, enum virtchnl_ops op,
 		     void *msg, int msg_size)
 {
-	/* stub */
+	struct iecm_ctlq_msg ctlq_msg;
+	struct iecm_dma_mem *dma_mem;
+	struct iecm_vport *vport;
+	bool work_done = false;
+	int payload_size = 0;
+	int num_retry = 10;
+	u16 num_q_msg;
+	int err = 0;
+
+	vport = adapter->vports[0];
+	while (1) {
+		/* Try to get one message */
+		num_q_msg = 1;
+		dma_mem = NULL;
+		err = iecm_ctlq_recv(adapter->hw.arq, &num_q_msg, &ctlq_msg);
+		/* If no message then decide if we have to retry based on
+		 * opcode
+		 */
+		if (err || !num_q_msg) {
+			if (op && num_retry--) {
+				msleep(20);
+				continue;
+			} else {
+				break;
+			}
+		}
+
+		/* If we are here a message is received. Check if we are looking
+		 * for a specific message based on opcode. If it is different
+		 * ignore and post buffers
+		 */
+		if (op && ctlq_msg.cookie.mbx.chnl_opcode != op)
+			goto post_buffs;
+
+		if (ctlq_msg.data_len)
+			payload_size = ctlq_msg.ctx.indirect.payload->size;
+
+		/* All conditions are met. Either a message requested is
+		 * received or we received a message to be processed
+		 */
+		switch (ctlq_msg.cookie.mbx.chnl_opcode) {
+		case VIRTCHNL_OP_VERSION:
+		case VIRTCHNL_OP_GET_CAPS:
+		case VIRTCHNL_OP_CREATE_VPORT:
+			if (msg)
+				memcpy(msg, ctlq_msg.ctx.indirect.payload->va,
+				       min_t(int,
+					     payload_size, msg_size));
+			work_done = true;
+			break;
+		case VIRTCHNL_OP_ENABLE_VPORT:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_ENA_VPORT_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_ENA_VPORT, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_DISABLE_VPORT:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_DIS_VPORT_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_DIS_VPORT, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_DESTROY_VPORT:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_DESTROY_VPORT_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_DESTROY_VPORT, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_CONFIG_TX_QUEUES:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_CONFIG_TXQ_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_CONFIG_TXQ, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_CONFIG_RX_QUEUES:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_CONFIG_RXQ_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_CONFIG_RXQ, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_ENABLE_QUEUES_V2:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_ENA_QUEUES_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_ENA_QUEUES, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_DISABLE_QUEUES_V2:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_DIS_QUEUES_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_DIS_QUEUES, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_ADD_QUEUES:
+			if (ctlq_msg.cookie.mbx.chnl_retval) {
+				set_bit(IECM_VC_ADD_QUEUES_ERR,
+					adapter->vc_state);
+			} else {
+				mutex_lock(&adapter->vc_msg_lock);
+				memcpy(adapter->vc_msg,
+				       ctlq_msg.ctx.indirect.payload->va,
+				       min((int)
+					   ctlq_msg.ctx.indirect.payload->size,
+					   IECM_DFLT_MBX_BUF_SIZE));
+			}
+			set_bit(IECM_VC_ADD_QUEUES, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_DEL_QUEUES:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_DEL_QUEUES_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_DEL_QUEUES, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_MAP_QUEUE_VECTOR:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_MAP_IRQ_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_MAP_IRQ, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_UNMAP_QUEUE_VECTOR:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_UNMAP_IRQ_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_UNMAP_IRQ, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_GET_STATS:
+			if (ctlq_msg.cookie.mbx.chnl_retval) {
+				set_bit(IECM_VC_GET_STATS_ERR,
+					adapter->vc_state);
+			} else {
+				mutex_lock(&adapter->vc_msg_lock);
+				memcpy(adapter->vc_msg,
+				       ctlq_msg.ctx.indirect.payload->va,
+				       min_t(int,
+					     payload_size,
+					     IECM_DFLT_MBX_BUF_SIZE));
+			}
+			set_bit(IECM_VC_GET_STATS, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_GET_RSS_HASH:
+			if (ctlq_msg.cookie.mbx.chnl_retval) {
+				set_bit(IECM_VC_GET_RSS_HASH_ERR,
+					adapter->vc_state);
+			} else {
+				mutex_lock(&adapter->vc_msg_lock);
+				memcpy(adapter->vc_msg,
+				       ctlq_msg.ctx.indirect.payload->va,
+				       min_t(int,
+					     payload_size,
+					     IECM_DFLT_MBX_BUF_SIZE));
+			}
+			set_bit(IECM_VC_GET_RSS_HASH, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_SET_RSS_HASH:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_SET_RSS_HASH_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_SET_RSS_HASH, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_GET_RSS_LUT:
+			if (ctlq_msg.cookie.mbx.chnl_retval) {
+				set_bit(IECM_VC_GET_RSS_LUT_ERR,
+					adapter->vc_state);
+			} else {
+				mutex_lock(&adapter->vc_msg_lock);
+				memcpy(adapter->vc_msg,
+				       ctlq_msg.ctx.indirect.payload->va,
+				       min_t(int,
+					     payload_size,
+					     IECM_DFLT_MBX_BUF_SIZE));
+			}
+			set_bit(IECM_VC_GET_RSS_LUT, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_SET_RSS_LUT:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_SET_RSS_LUT_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_SET_RSS_LUT, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_GET_RSS_KEY:
+			if (ctlq_msg.cookie.mbx.chnl_retval) {
+				set_bit(IECM_VC_GET_RSS_KEY_ERR,
+					adapter->vc_state);
+			} else {
+				mutex_lock(&adapter->vc_msg_lock);
+				memcpy(adapter->vc_msg,
+				       ctlq_msg.ctx.indirect.payload->va,
+				       min_t(int,
+					     payload_size,
+					     IECM_DFLT_MBX_BUF_SIZE));
+			}
+			set_bit(IECM_VC_GET_RSS_KEY, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_CONFIG_RSS_KEY:
+			if (ctlq_msg.cookie.mbx.chnl_retval)
+				set_bit(IECM_VC_CONFIG_RSS_KEY_ERR,
+					adapter->vc_state);
+			set_bit(IECM_VC_CONFIG_RSS_KEY, adapter->vc_state);
+			wake_up(&adapter->vchnl_wq);
+			break;
+		case VIRTCHNL_OP_EVENT:
+			mutex_lock(&adapter->vc_msg_lock);
+			memcpy(adapter->vc_msg,
+			       ctlq_msg.ctx.indirect.payload->va,
+			       min_t(int,
+				     payload_size,
+				     IECM_DFLT_MBX_BUF_SIZE));
+			iecm_recv_event_msg(vport);
+			break;
+		default:
+			if (adapter->dev_ops.vc_ops.recv_mbx_msg)
+				err =
+				adapter->dev_ops.vc_ops.recv_mbx_msg(adapter,
+								   msg,
+								   msg_size,
+								   &ctlq_msg,
+								   &work_done);
+			else
+				dev_warn(&adapter->pdev->dev,
+					 "Unhandled virtchnl response %d\n",
+					 ctlq_msg.cookie.mbx.chnl_opcode);
+			break;
+		} /* switch v_opcode */
+post_buffs:
+		if (ctlq_msg.data_len)
+			dma_mem = ctlq_msg.ctx.indirect.payload;
+		else
+			num_q_msg = 0;
+
+		err = iecm_ctlq_post_rx_buffs(&adapter->hw, adapter->hw.arq,
+					      &num_q_msg, &dma_mem);
+
+		/* If post failed clear the only buffer we supplied */
+		if (err && dma_mem)
+			dmam_free_coherent(&adapter->pdev->dev, dma_mem->size,
+					   dma_mem->va, dma_mem->pa);
+		/* Applies only if we are looking for a specific opcode */
+		if (work_done)
+			break;
+	}
+
+	return err;
 }
 EXPORT_SYMBOL(iecm_recv_mb_msg);
 
@@ -177,7 +537,23 @@ int iecm_wait_for_event(struct iecm_adapter *adapter,
 			enum iecm_vport_vc_state state,
 			enum iecm_vport_vc_state err_check)
 {
-	/* stub */
+	int event;
+
+	event = wait_event_timeout(adapter->vchnl_wq,
+				   test_and_clear_bit(state, adapter->vc_state),
+				   msecs_to_jiffies(500));
+	if (event) {
+		if (test_and_clear_bit(err_check, adapter->vc_state)) {
+			dev_err(&adapter->pdev->dev,
+				"VC response error %d\n", err_check);
+			return -EINVAL;
+		}
+		return 0;
+	}
+
+	/* Timeout occurred */
+	dev_err(&adapter->pdev->dev, "VC timeout, state = %u\n", state);
+	return -ETIMEDOUT;
 }
 EXPORT_SYMBOL(iecm_wait_for_event);
 
@@ -404,7 +780,14 @@ int iecm_send_get_rx_ptype_msg(struct iecm_vport *vport)
 static struct iecm_ctlq_info *iecm_find_ctlq(struct iecm_hw *hw,
 					     enum iecm_ctlq_type type, int id)
 {
-	/* stub */
+	struct iecm_ctlq_info *cq, *tmp;
+
+	list_for_each_entry_safe(cq, tmp, &hw->cq_list_head, cq_list) {
+		if (cq->q_id == id && cq->cq_type == type)
+			return cq;
+	}
+
+	return NULL;
 }
 
 /**
@@ -413,7 +796,8 @@ static struct iecm_ctlq_info *iecm_find_ctlq(struct iecm_hw *hw,
  */
 void iecm_deinit_dflt_mbx(struct iecm_adapter *adapter)
 {
-	/* stub */
+	cancel_delayed_work_sync(&adapter->init_task);
+	iecm_ctlq_deinit(&adapter->hw);
 }
 
 /**
@@ -474,7 +858,21 @@ int iecm_init_dflt_mbx(struct iecm_adapter *adapter)
  */
 int iecm_vport_params_buf_alloc(struct iecm_adapter *adapter)
 {
-	/* stub */
+	adapter->vport_params_reqd = kcalloc(IECM_MAX_NUM_VPORTS,
+					     sizeof(*adapter->vport_params_reqd),
+					     GFP_KERNEL);
+	if (!adapter->vport_params_reqd)
+		return -ENOMEM;
+
+	adapter->vport_params_recvd = kcalloc(IECM_MAX_NUM_VPORTS,
+					      sizeof(*adapter->vport_params_recvd),
+					      GFP_KERNEL);
+	if (!adapter->vport_params_recvd) {
+		kfree(adapter->vport_params_reqd);
+		return -ENOMEM;
+	}
+
+	return 0;
 }
 
 /**
