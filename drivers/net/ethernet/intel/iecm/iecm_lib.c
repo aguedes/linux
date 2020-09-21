@@ -14,7 +14,10 @@ static const struct net_device_ops iecm_netdev_ops_singleq;
  */
 static void iecm_mb_intr_rel_irq(struct iecm_adapter *adapter)
 {
-	/* stub */
+	int irq_num;
+
+	irq_num = adapter->msix_entries[0].vector;
+	free_irq(irq_num, adapter);
 }
 
 /**
@@ -43,7 +46,12 @@ static void iecm_intr_rel(struct iecm_adapter *adapter)
  */
 static irqreturn_t iecm_mb_intr_clean(int __always_unused irq, void *data)
 {
-	/* stub */
+	struct iecm_adapter *adapter = (struct iecm_adapter *)data;
+
+	set_bit(__IECM_MB_INTR_TRIGGER, adapter->flags);
+	queue_delayed_work(adapter->serv_wq, &adapter->serv_task,
+			   msecs_to_jiffies(0));
+	return IRQ_HANDLED;
 }
 
 /**
@@ -52,7 +60,12 @@ static irqreturn_t iecm_mb_intr_clean(int __always_unused irq, void *data)
  */
 static void iecm_mb_irq_enable(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_hw *hw = &adapter->hw;
+	struct iecm_intr_reg *intr = &adapter->mb_vector.intr_reg;
+	u32 val;
+
+	val = intr->dyn_ctl_intena_m | intr->dyn_ctl_itridx_m;
+	wr32(hw, intr->dyn_ctl, val);
 }
 
 /**
@@ -61,7 +74,22 @@ static void iecm_mb_irq_enable(struct iecm_adapter *adapter)
  */
 static int iecm_mb_intr_req_irq(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_q_vector *mb_vector = &adapter->mb_vector;
+	int irq_num, mb_vidx = 0, err;
+
+	irq_num = adapter->msix_entries[mb_vidx].vector;
+	snprintf(mb_vector->name, sizeof(mb_vector->name) - 1,
+		 "%s-%s-%d", dev_driver_string(&adapter->pdev->dev),
+		 "Mailbox", mb_vidx);
+	err = request_irq(irq_num, adapter->irq_mb_handler, 0,
+			  mb_vector->name, adapter);
+	if (err) {
+		dev_err(&adapter->pdev->dev,
+			"Request_irq for mailbox failed, error: %d\n", err);
+		return err;
+	}
+	set_bit(__IECM_MB_INTR_MODE, adapter->flags);
+	return 0;
 }
 
 /**
@@ -73,7 +101,16 @@ static int iecm_mb_intr_req_irq(struct iecm_adapter *adapter)
  */
 static void iecm_get_mb_vec_id(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct virtchnl_vector_chunks *vchunks;
+	struct virtchnl_vector_chunk *chunk;
+
+	if (adapter->req_vec_chunks) {
+		vchunks = &adapter->req_vec_chunks->vchunks;
+		chunk = &vchunks->num_vchunk[0];
+		adapter->mb_vector.v_idx = chunk->start_vector_id;
+	} else {
+		adapter->mb_vector.v_idx = 0;
+	}
 }
 
 /**
@@ -82,7 +119,10 @@ static void iecm_get_mb_vec_id(struct iecm_adapter *adapter)
  */
 static int iecm_mb_intr_init(struct iecm_adapter *adapter)
 {
-	/* stub */
+	iecm_get_mb_vec_id(adapter);
+	adapter->dev_ops.reg_ops.mb_intr_reg_init(adapter);
+	adapter->irq_mb_handler = iecm_mb_intr_clean;
+	return iecm_mb_intr_req_irq(adapter);
 }
 
 /**
@@ -94,7 +134,12 @@ static int iecm_mb_intr_init(struct iecm_adapter *adapter)
  */
 static void iecm_intr_distribute(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_vport *vport;
+
+	vport = adapter->vports[0];
+	if (adapter->num_msix_entries != adapter->num_req_msix)
+		vport->num_q_vectors = adapter->num_msix_entries -
+				       IECM_MAX_NONQ_VEC - IECM_MIN_RDMA_VEC;
 }
 
 /**

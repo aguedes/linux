@@ -1855,7 +1855,29 @@ int
 iecm_vport_get_vec_ids(u16 *vecids, int num_vecids,
 		       struct virtchnl_vector_chunks *chunks)
 {
-	/* stub */
+	int num_chunks = chunks->num_vector_chunks;
+	struct virtchnl_vector_chunk *chunk;
+	int num_vecid_filled = 0;
+	int start_vecid;
+	int num_vec;
+	int i, j;
+
+	for (j = 0; j < num_chunks; j++) {
+		chunk = &chunks->num_vchunk[j];
+		num_vec = chunk->num_vectors;
+		start_vecid = chunk->start_vector_id;
+		for (i = 0; i < num_vec; i++) {
+			if ((num_vecid_filled + i) < num_vecids) {
+				vecids[num_vecid_filled + i] = start_vecid;
+				start_vecid++;
+			} else {
+				break;
+			}
+		}
+		num_vecid_filled = num_vecid_filled + i;
+	}
+
+	return num_vecid_filled;
 }
 
 /**
