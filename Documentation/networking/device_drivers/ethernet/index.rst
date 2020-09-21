@@ -39,6 +39,7 @@ Contents:
    intel/iavf
    intel/ice
    intel/iecm
+   intel/idpf
    marvell/octeontx2
    mellanox/mlx5
    microsoft/netvsc
