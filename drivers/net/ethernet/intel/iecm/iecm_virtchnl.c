@@ -663,7 +663,19 @@ int iecm_send_destroy_vport_msg(struct iecm_vport *vport)
  */
 int iecm_send_enable_vport_msg(struct iecm_vport *vport)
 {
-	/* stub */
+	struct iecm_adapter *adapter = vport->adapter;
+	struct virtchnl_vport v_id;
+	int err;
+
+	v_id.vport_id = vport->vport_id;
+
+	err = iecm_send_mb_msg(adapter, VIRTCHNL_OP_ENABLE_VPORT,
+			       sizeof(v_id), (u8 *)&v_id);
+	if (err)
+		return err;
+
+	return iecm_wait_for_event(adapter, IECM_VC_ENA_VPORT,
+				   IECM_VC_ENA_VPORT_ERR);
 }
 
 /**
@@ -1839,7 +1851,27 @@ EXPORT_SYMBOL(iecm_vc_core_init);
 static void iecm_vport_init(struct iecm_vport *vport,
 			    __always_unused int vport_id)
 {
-	/* stub */
+	struct virtchnl_create_vport *vport_msg;
+
+	vport_msg = (struct virtchnl_create_vport *)
+				vport->adapter->vport_params_recvd[0];
+	vport->txq_model = vport_msg->txq_model;
+	vport->rxq_model = vport_msg->rxq_model;
+	vport->vport_type = (u16)vport_msg->vport_type;
+	vport->vport_id = vport_msg->vport_id;
+	vport->adapter->rss_data.rss_key_size = min_t(u16, NETDEV_RSS_KEY_LEN,
+						      vport_msg->rss_key_size);
+	vport->adapter->rss_data.rss_lut_size = vport_msg->rss_lut_size;
+	ether_addr_copy(vport->default_mac_addr, vport_msg->default_mac_addr);
+	vport->max_mtu = IECM_MAX_MTU;
+
+	iecm_vport_set_hsplit(vport, NULL);
+
+	init_waitqueue_head(&vport->sw_marker_wq);
+	iecm_vport_init_num_qs(vport, vport_msg);
+	iecm_vport_calc_num_q_desc(vport);
+	iecm_vport_calc_num_q_groups(vport);
+	iecm_vport_calc_num_q_vec(vport);
 }
 
 /**
