@@ -38,6 +38,7 @@ Contents:
    intel/i40e
    intel/iavf
    intel/ice
+   intel/iecm
    marvell/octeontx2
    mellanox/mlx5
    microsoft/netvsc
