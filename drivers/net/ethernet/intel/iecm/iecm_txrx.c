@@ -998,7 +998,11 @@ static int iecm_rx_splitq_clean(struct iecm_queue *rxq, int budget)
 irqreturn_t
 iecm_vport_intr_clean_queues(int __always_unused irq, void *data)
 {
-	/* stub */
+	struct iecm_q_vector *q_vector = (struct iecm_q_vector *)data;
+
+	napi_schedule(&q_vector->napi);
+
+	return IRQ_HANDLED;
 }
 
 /**
