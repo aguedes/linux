@@ -424,7 +424,46 @@ void iecm_deinit_dflt_mbx(struct iecm_adapter *adapter)
  */
 int iecm_init_dflt_mbx(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_ctlq_create_info ctlq_info[] = {
+		{
+			.type = IECM_CTLQ_TYPE_MAILBOX_TX,
+			.id = IECM_DFLT_MBX_ID,
+			.len = IECM_DFLT_MBX_Q_LEN,
+			.buf_size = IECM_DFLT_MBX_BUF_SIZE
+		},
+		{
+			.type = IECM_CTLQ_TYPE_MAILBOX_RX,
+			.id = IECM_DFLT_MBX_ID,
+			.len = IECM_DFLT_MBX_Q_LEN,
+			.buf_size = IECM_DFLT_MBX_BUF_SIZE
+		}
+	};
+	struct iecm_hw *hw = &adapter->hw;
+	int err;
+
+	adapter->dev_ops.reg_ops.ctlq_reg_init(ctlq_info);
+
+#define NUM_Q 2
+	err = iecm_ctlq_init(hw, NUM_Q, ctlq_info);
+	if (err)
+		return -EINVAL;
+
+	hw->asq = iecm_find_ctlq(hw, IECM_CTLQ_TYPE_MAILBOX_TX,
+				 IECM_DFLT_MBX_ID);
+	hw->arq = iecm_find_ctlq(hw, IECM_CTLQ_TYPE_MAILBOX_RX,
+				 IECM_DFLT_MBX_ID);
+
+	if (!hw->asq || !hw->arq) {
+		iecm_ctlq_deinit(hw);
+		return -ENOENT;
+	}
+	adapter->state = __IECM_STARTUP;
+	/* Skew the delay for init tasks for each function based on fn number
+	 * to prevent every function from making the same call simultaneously.
+	 */
+	queue_delayed_work(adapter->init_wq, &adapter->init_task,
+			   msecs_to_jiffies(5 * (adapter->pdev->devfn & 0x07)));
+	return 0;
 }
 
 /**
@@ -446,7 +485,15 @@ int iecm_vport_params_buf_alloc(struct iecm_adapter *adapter)
  */
 void iecm_vport_params_buf_rel(struct iecm_adapter *adapter)
 {
-	/* stub */
+	int i = 0;
+
+	for (i = 0; i < IECM_MAX_NUM_VPORTS; i++) {
+		kfree(adapter->vport_params_recvd[i]);
+		kfree(adapter->vport_params_reqd[i]);
+	}
+
+	kfree(adapter->caps);
+	kfree(adapter->config_data.req_qs_chunks);
 }
 
 /**
@@ -572,6 +619,24 @@ static bool iecm_is_capability_ena(struct iecm_adapter *adapter, u64 flag)
  */
 void iecm_vc_ops_init(struct iecm_adapter *adapter)
 {
-	/* stub */
+	struct iecm_virtchnl_ops *vc_ops = &adapter->dev_ops.vc_ops;
+
+	vc_ops->core_init = iecm_vc_core_init;
+	vc_ops->vport_init = iecm_vport_init;
+	vc_ops->vport_queue_ids_init = iecm_vport_queue_ids_init;
+	vc_ops->get_caps = iecm_send_get_caps_msg;
+	vc_ops->is_cap_ena = iecm_is_capability_ena;
+	vc_ops->config_queues = iecm_send_config_queues_msg;
+	vc_ops->enable_queues = iecm_send_enable_queues_msg;
+	vc_ops->disable_queues = iecm_send_disable_queues_msg;
+	vc_ops->irq_map_unmap = iecm_send_map_unmap_queue_vector_msg;
+	vc_ops->enable_vport = iecm_send_enable_vport_msg;
+	vc_ops->disable_vport = iecm_send_disable_vport_msg;
+	vc_ops->destroy_vport = iecm_send_destroy_vport_msg;
+	vc_ops->get_ptype = iecm_send_get_rx_ptype_msg;
+	vc_ops->get_set_rss_lut = iecm_send_get_set_rss_lut_msg;
+	vc_ops->get_set_rss_hash = iecm_send_get_set_rss_hash_msg;
+	vc_ops->adjust_qs = iecm_vport_adjust_qs;
+	vc_ops->recv_mbx_msg = NULL;
 }
 EXPORT_SYMBOL(iecm_vc_ops_init);
