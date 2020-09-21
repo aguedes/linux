@@ -854,7 +854,37 @@ static void iecm_deinit_task(struct iecm_adapter *adapter)
  */
 static int iecm_init_hard_reset(struct iecm_adapter *adapter)
 {
-	/* stub */
+	int err = 0;
+
+	/* Prepare for reset */
+	if (test_bit(__IECM_HR_FUNC_RESET, adapter->flags)) {
+		iecm_deinit_task(adapter);
+		adapter->dev_ops.reg_ops.trigger_reset(adapter,
+						       __IECM_HR_FUNC_RESET);
+		set_bit(__IECM_UP_REQUESTED, adapter->flags);
+		clear_bit(__IECM_HR_FUNC_RESET, adapter->flags);
+	} else if (test_bit(__IECM_HR_CORE_RESET, adapter->flags)) {
+		if (adapter->state == __IECM_UP)
+			set_bit(__IECM_UP_REQUESTED, adapter->flags);
+		iecm_deinit_task(adapter);
+		clear_bit(__IECM_HR_CORE_RESET, adapter->flags);
+	} else if (test_and_clear_bit(__IECM_HR_DRV_LOAD, adapter->flags)) {
+	/* Trigger reset */
+	} else {
+		dev_err(&adapter->pdev->dev, "Unhandled hard reset cause\n");
+		err = -EBADRQC;
+		goto handle_err;
+	}
+
+	/* Reset is complete and so start building the driver resources again */
+	err = iecm_init_dflt_mbx(adapter);
+	if (err) {
+		dev_err(&adapter->pdev->dev, "Failed to initialize default mailbox: %d\n",
+			err);
+	}
+handle_err:
+	mutex_unlock(&adapter->reset_lock);
+	return err;
 }
 
 /**
@@ -883,7 +913,109 @@ static void iecm_vc_event_task(struct work_struct *work)
 int iecm_initiate_soft_reset(struct iecm_vport *vport,
 			     enum iecm_flags reset_cause)
 {
-	/* stub */
+	enum iecm_state current_state = vport->adapter->state;
+	struct iecm_adapter *adapter = vport->adapter;
+	struct iecm_vport *old_vport;
+	int err = 0;
+
+	/* make sure we do not end up in initiating multiple resets */
+	mutex_lock(&adapter->reset_lock);
+
+	/* If the system is low on memory, we can end up in bad state if we
+	 * free all the memory for queue resources and try to allocate them
+	 * again. Instead, we can pre-allocate the new resources before doing
+	 * anything and bailing if the alloc fails.
+	 *
+	 * Here we make a clone to act as a handle to old resources, then do a
+	 * new alloc. If successful then we'll stop the clone, free the old
+	 * resources, and continue with reset on new vport resources. On error
+	 * copy clone back to vport to get back to a good state and return
+	 * error.
+	 *
+	 * We also want to be careful we don't invalidate any pre-existing
+	 * pointers to vports prior to calling this.
+	 */
+	old_vport = kzalloc(sizeof(*vport), GFP_KERNEL);
+	if (!old_vport) {
+		mutex_unlock(&adapter->reset_lock);
+		return -ENOMEM;
+	}
+	memcpy(old_vport, vport, sizeof(*vport));
+
+	/* Adjust resource parameters prior to reallocating resources */
+	switch (reset_cause) {
+	case __IECM_SR_Q_CHANGE:
+		adapter->dev_ops.vc_ops.adjust_qs(vport);
+		break;
+	case __IECM_SR_Q_DESC_CHANGE:
+		/* Update queue parameters before allocating resources */
+		iecm_vport_calc_num_q_desc(vport);
+		break;
+	case __IECM_SR_Q_SCH_CHANGE:
+	case __IECM_SR_MTU_CHANGE:
+		break;
+	default:
+		dev_err(&adapter->pdev->dev, "Unhandled soft reset cause\n");
+		err = -EINVAL;
+		goto err_reset;
+	}
+
+	/* It's important we pass in the vport pointer so that when
+	 * back-pointers are setup in queue allocs, they get the right pointer.
+	 */
+	err = iecm_vport_res_alloc(vport);
+	if (err)
+		goto err_mem_alloc;
+
+	if (!test_bit(__IECM_NO_EXTENDED_CAPS, adapter->flags)) {
+		if (current_state <= __IECM_DOWN) {
+			iecm_send_delete_queues_msg(old_vport);
+		} else {
+			set_bit(__IECM_DEL_QUEUES, adapter->flags);
+			iecm_vport_stop(old_vport);
+		}
+
+		iecm_deinit_rss(old_vport);
+		err = iecm_send_add_queues_msg(vport, vport->num_txq,
+					       vport->num_complq,
+					       vport->num_rxq,
+					       vport->num_bufq);
+		if (err)
+			goto err_reset;
+	}
+
+	/* Post resource allocation reset */
+	switch (reset_cause) {
+	case __IECM_SR_Q_CHANGE:
+		iecm_intr_rel(adapter);
+		iecm_intr_req(adapter);
+		break;
+	case __IECM_SR_Q_DESC_CHANGE:
+	case __IECM_SR_Q_SCH_CHANGE:
+	case __IECM_SR_MTU_CHANGE:
+		iecm_vport_stop(old_vport);
+		break;
+	default:
+		dev_err(&adapter->pdev->dev, "Unhandled soft reset cause\n");
+		err = -EINVAL;
+		goto err_reset;
+	}
+
+	/* free the old resources */
+	iecm_vport_res_free(old_vport);
+	kfree(old_vport);
+
+	if (current_state == __IECM_UP)
+		err = iecm_vport_open(vport);
+	mutex_unlock(&adapter->reset_lock);
+	return err;
+err_reset:
+	iecm_vport_res_free(vport);
+err_mem_alloc:
+	memcpy(vport, old_vport, sizeof(*vport));
+	kfree(old_vport);
+	mutex_unlock(&adapter->reset_lock);
+	return err;
 }
 
 /**
@@ -993,6 +1125,7 @@ int iecm_probe(struct pci_dev *pdev,
 	INIT_DELAYED_WORK(&adapter->init_task, iecm_init_task);
 	INIT_DELAYED_WORK(&adapter->vc_event_task, iecm_vc_event_task);
 
+	adapter->dev_ops.reg_ops.reset_reg_init(&adapter->reset_reg);
 	mutex_lock(&adapter->reset_lock);
 	set_bit(__IECM_HR_DRV_LOAD, adapter->flags);
 	err = iecm_init_hard_reset(adapter);
@@ -1091,7 +1224,11 @@ static int iecm_open(struct net_device *netdev)
  */
 static int iecm_change_mtu(struct net_device *netdev, int new_mtu)
 {
-	/* stub */
+	struct iecm_vport *vport =  iecm_netdev_to_vport(netdev);
+
+	netdev->mtu = new_mtu;
+
+	return iecm_initiate_soft_reset(vport, __IECM_SR_MTU_CHANGE);
 }
 
 void *iecm_alloc_dma_mem(struct iecm_hw *hw, struct iecm_dma_mem *mem, u64 size)
