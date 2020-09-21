@@ -353,4 +353,15 @@ config IECM
 
 	  More specific information on configuring the driver is in
 	  <file:Documentation/networking/device_drivers/ethernet/intel/iecm.rst>.
+
+config IDPF
+	tristate "Intel(R) Data Plane Function Support"
+	default n
+	depends on PCI
+	help
+	 To compile this driver as a module, choose M here. The module
+	 will be called idpf.
+
+	 More specific information on configuring the driver is in
+	  <file:Documentation/networking/device_drivers/ethernet/intel/idpf.rst>.
 endif # NET_VENDOR_INTEL
