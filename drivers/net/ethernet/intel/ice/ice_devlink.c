@@ -56,11 +56,29 @@ static int ice_info_fw_build(struct ice_pf *pf, char *buf, size_t len)
 	return 0;
 }
 
+static int ice_info_fw_srev(struct ice_pf *pf, char *buf, size_t len)
+{
+	struct ice_nvm_info *nvm = &pf->hw.flash.nvm;
+
+	snprintf(buf, len, "%u", nvm->srev);
+
+	return 0;
+}
+
 static int ice_info_orom_ver(struct ice_pf *pf, char *buf, size_t len)
 {
 	struct ice_orom_info *orom = &pf->hw.flash.orom;
 
 	snprintf(buf, len, "%u.%u.%u", orom->major, orom->build, orom->patch);
+
+	return 0;
+}
+
+static int ice_info_orom_srev(struct ice_pf *pf, char *buf, size_t len)
+{
+	struct ice_orom_info *orom = &pf->hw.flash.orom;
+
+	snprintf(buf, len, "%u", orom->srev);
 
 	return 0;
 }
@@ -148,7 +166,9 @@ static const struct ice_devlink_version {
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_MGMT, ice_info_fw_mgmt),
 	running("fw.mgmt.api", ice_info_fw_api),
 	running("fw.mgmt.build", ice_info_fw_build),
+	running("fw.mgmt.srev", ice_info_fw_srev),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_UNDI, ice_info_orom_ver),
+	running("fw.undi.srev", ice_info_orom_srev),
 	running("fw.psid.api", ice_info_nvm_ver),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID, ice_info_eetrack),
 	running("fw.app.name", ice_info_ddp_pkg_name),
