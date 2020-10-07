@@ -1334,6 +1334,8 @@ struct ice_aqc_nvm_checksum {
 	u8 rsvd2[12];
 };
 
+#define ICE_AQC_NVM_MINSREV_MOD_ID		0x130
+
 /* The result of netlist NVM read comes in a TLV format. The actual data
  * (netlist header) starts from word offset 1 (byte 2). The FW strips
  * out the type field from the TLV header so all the netlist fields
@@ -1360,6 +1362,21 @@ struct ice_aqc_nvm_checksum {
 #define ICE_AQC_NVM_NETLIST_ID_BLK_REV_HIGH		9
 #define ICE_AQC_NVM_NETLIST_ID_BLK_SHA_HASH		0xA
 #define ICE_AQC_NVM_NETLIST_ID_BLK_CUST_VER		0x2F
+
+/* Used for reading and writing MinSRev using 0x0701 and 0x0703. Note that the
+ * type field is excluded from the section when reading and writing from
+ * a module using the module_typeid field with these AQ commands.
+ */
+struct ice_aqc_nvm_minsrev {
+	__le16 length;
+	__le16 validity;
+#define ICE_AQC_NVM_MINSREV_NVM_VALID		BIT(0)
+#define ICE_AQC_NVM_MINSREV_OROM_VALID		BIT(1)
+	__le16 nvm_minsrev_l;
+	__le16 nvm_minsrev_h;
+	__le16 orom_minsrev_l;
+	__le16 orom_minsrev_h;
+};
 
 /* Used for NVM Set Package Data command - 0x070A */
 struct ice_aqc_nvm_pkg_data {
