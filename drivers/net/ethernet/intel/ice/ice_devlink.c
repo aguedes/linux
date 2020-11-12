@@ -9,6 +9,8 @@
 /* context for devlink info version reporting */
 struct ice_info_ctx {
 	char buf[128];
+	struct ice_nvm_info pending_nvm;
+	struct ice_hw_dev_caps dev_caps;
 };
 
 /* The following functions are used to format specific strings for various
@@ -80,6 +82,17 @@ static int ice_info_fw_srev(struct ice_pf *pf, struct ice_info_ctx *ctx)
 	return 0;
 }
 
+static int
+ice_info_pending_fw_srev(struct ice_pf __always_unused *pf, struct ice_info_ctx *ctx)
+{
+	struct ice_nvm_info *nvm = &ctx->pending_nvm;
+
+	if (ctx->dev_caps.common_cap.nvm_update_pending_nvm)
+		snprintf(ctx->buf, sizeof(ctx->buf), "%u", nvm->srev);
+
+	return 0;
+}
+
 static int ice_info_orom_ver(struct ice_pf *pf, struct ice_info_ctx *ctx)
 {
 	struct ice_orom_info *orom = &pf->hw.flash.orom;
@@ -107,11 +120,33 @@ static int ice_info_nvm_ver(struct ice_pf *pf, struct ice_info_ctx *ctx)
 	return 0;
 }
 
+static int
+ice_info_pending_nvm_ver(struct ice_pf __always_unused *pf, struct ice_info_ctx *ctx)
+{
+	struct ice_nvm_info *nvm = &ctx->pending_nvm;
+
+	if (ctx->dev_caps.common_cap.nvm_update_pending_nvm)
+		snprintf(ctx->buf, sizeof(ctx->buf), "%x.%02x", nvm->major, nvm->minor);
+
+	return 0;
+}
+
 static int ice_info_eetrack(struct ice_pf *pf, struct ice_info_ctx *ctx)
 {
 	struct ice_nvm_info *nvm = &pf->hw.flash.nvm;
 
 	snprintf(ctx->buf, sizeof(ctx->buf), "0x%08x", nvm->eetrack);
+
+	return 0;
+}
+
+static int
+ice_info_pending_eetrack(struct ice_pf __always_unused *pf, struct ice_info_ctx *ctx)
+{
+	struct ice_nvm_info *nvm = &ctx->pending_nvm;
+
+	if (ctx->dev_caps.common_cap.nvm_update_pending_nvm)
+		snprintf(ctx->buf, sizeof(ctx->buf), "0x%08x", nvm->eetrack);
 
 	return 0;
 }
@@ -165,6 +200,7 @@ static int ice_info_netlist_build(struct ice_pf *pf, struct ice_info_ctx *ctx)
 
 #define fixed(key, getter) { ICE_VERSION_FIXED, key, getter }
 #define running(key, getter) { ICE_VERSION_RUNNING, key, getter }
+#define stored(key, getter) { ICE_VERSION_STORED, key, getter }
 
 enum ice_version_type {
 	ICE_VERSION_FIXED,
@@ -182,10 +218,13 @@ static const struct ice_devlink_version {
 	running("fw.mgmt.api", ice_info_fw_api),
 	running("fw.mgmt.build", ice_info_fw_build),
 	running("fw.mgmt.srev", ice_info_fw_srev),
+	stored("fw.mgmt.srev", ice_info_pending_fw_srev),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_UNDI, ice_info_orom_ver),
 	running("fw.undi.srev", ice_info_orom_srev),
 	running("fw.psid.api", ice_info_nvm_ver),
+	stored("fw.psid.api", ice_info_pending_nvm_ver),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID, ice_info_eetrack),
+	stored(DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID, ice_info_pending_eetrack),
 	running("fw.app.name", ice_info_ddp_pkg_name),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_APP, ice_info_ddp_pkg_version),
 	running("fw.app.bundle_id", ice_info_ddp_pkg_bundle_id),
@@ -209,13 +248,34 @@ static int ice_devlink_info_get(struct devlink *devlink,
 				struct netlink_ext_ack *extack)
 {
 	struct ice_pf *pf = devlink_priv(devlink);
+	struct device *dev = ice_pf_to_dev(pf);
+	struct ice_hw *hw = &pf->hw;
 	struct ice_info_ctx *ctx;
+	enum ice_status status;
 	size_t i;
 	int err;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
+
+	/* discover capabilities first */
+	status = ice_discover_dev_caps(hw, &ctx->dev_caps);
+	if (status) {
+		err = -EIO;
+		goto out_free_ctx;
+	}
+
+	if (ctx->dev_caps.common_cap.nvm_update_pending_nvm) {
+		status = ice_get_inactive_nvm_ver(hw, &ctx->pending_nvm);
+		if (status) {
+			dev_dbg(dev, "Unable to read inactive NVM version data, status %s aq_err %s\n",
+				ice_stat_str(status), ice_aq_str(hw->adminq.sq_last_status));
+
+			/* disable display of pending Option ROM */
+			ctx->dev_caps.common_cap.nvm_update_pending_nvm = false;
+		}
+	}
 
 	err = devlink_info_driver_name_put(req, KBUILD_MODNAME);
 	if (err) {
