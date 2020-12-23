@@ -221,7 +221,7 @@ struct igc_adapter {
 	ktime_t ptp_reset_start; /* Reset time in clock mono */
 
 	struct bpf_prog *xdp_prog;
-	char fw_version[16];
+	char fw_version[32];
 };
 
 void igc_up(struct igc_adapter *adapter);
